@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     required: true,
   },
 
-  email: {
+  phone: {
     type: String,
     required: true,
     unique: true,
@@ -21,6 +21,21 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['admin', 'moderator', 'customer'],
     default: 'customer',
+  },
+
+  otp: {
+    type: String,
+    default: null,
+  },
+
+  otpExpires: {
+    type: Date,
+    default: null,
+  },
+
+  isVerified: {
+    type: Boolean,
+    default: false,
   },
 });
 
