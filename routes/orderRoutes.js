@@ -10,14 +10,14 @@ const Product = require('../models/Product');
 
 const protect = require('../middleware/authMiddleware');
 
-const { adminOnly } = require('../middleware/roleMiddleware');
+const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
 
 //
 // CREATE ORDER
 //
 router.post('/', protect, async (req, res) => {
   try {
-    const { orderItems, shippingAddress, totalPrice } = req.body;
+    const { orderItems, shippingAddress, totalPrice, isOffline, salesChannel } = req.body;
 
     if (!orderItems || orderItems.length === 0) {
       return res.status(400).json({
@@ -72,14 +72,15 @@ router.post('/', protect, async (req, res) => {
     //
     const order = new Order({
       user: req.user.id,
-
       orderItems,
-
       shippingAddress,
-
       totalPrice,
-
-      status: 'Pending',
+      status: isOffline ? 'Delivered' : 'Pending',
+      isDelivered: isOffline ? true : false,
+      deliveredAt: isOffline ? Date.now() : null,
+      receivedBy: isOffline ? req.user.id : null,
+      createdBy: isOffline ? req.user.id : null,
+      salesChannel: isOffline ? (salesChannel || 'Offline') : 'Online',
     });
 
     const createdOrder = await order.save();
@@ -110,15 +111,61 @@ router.get('/my-orders', protect, async (req, res) => {
 });
 
 //
-// GET ALL ORDERS (ADMIN)
+// GET ALL ORDERS (ADMIN & MODERATOR SCOPED)
 //
-router.get('/', protect, adminOnly, async (req, res) => {
+router.get('/', protect, adminOrModerator, async (req, res) => {
   try {
-    const orders = await Order.find()
-      .populate('user', 'name email')
+    let query = {};
+    if (req.user.role !== 'admin') {
+      query = {
+        $or: [
+          { receivedBy: req.user.id },
+          { receivedBy: { $exists: false }, status: 'Pending' },
+          { receivedBy: null, status: 'Pending' },
+        ],
+      };
+    }
+
+    const orders = await Order.find(query)
+      .populate('user', 'name phone')
+      .populate('receivedBy', 'name')
       .sort({ createdAt: -1 });
 
     res.json(orders);
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+});
+
+//
+// CLAIM ORDER (MODERATOR/ADMIN)
+//
+router.put('/:id/claim', protect, adminOrModerator, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        message: 'Order not found',
+      });
+    }
+
+    if (order.receivedBy) {
+      return res.status(400).json({
+        message: 'Order has already been claimed by another user',
+      });
+    }
+
+    order.receivedBy = req.user.id;
+    order.status = 'Processing';
+    await order.save();
+
+    res.json({
+      message: 'Order claimed successfully',
+      order,
+    });
   } catch (error) {
     res.status(500).json({
       message: error.message,
@@ -181,7 +228,7 @@ router.put(
   '/:id/status',
 
   protect,
-  adminOnly,
+  adminOrModerator,
 
   async (req, res) => {
     try {

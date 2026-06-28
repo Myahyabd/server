@@ -18,6 +18,8 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const userRoutes = require('./routes/userRoutes');
 
+const expenseRoutes = require('./routes/expenseRoutes');
+
 const app = express();
 
 // MIDDLEWARE
@@ -41,6 +43,8 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
 app.use('/api/users', userRoutes);
+
+app.use('/api/expenses', expenseRoutes);
 
 // MONGODB
 mongoose

@@ -43,6 +43,11 @@ const variantSchema = mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    image: {
+      type: String,
+      default: null,
+    },
   },
   {
     _id: false,
@@ -70,6 +75,10 @@ const productSchema = mongoose.Schema(
     },
 
     salePrice: {
+      type: Number,
+    },
+
+    moderatorPrice: {
       type: Number,
     },
 

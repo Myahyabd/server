@@ -121,6 +121,22 @@ const orderSchema = mongoose.Schema(
       type: String,
       default: '',
     },
+
+    receivedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+
+    salesChannel: {
+      type: String,
+      enum: ['Online', 'Facebook', 'Offline'],
+      default: 'Online',
+    },
   },
 
   {

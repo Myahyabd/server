@@ -104,16 +104,83 @@ router.post(
 );
 
 // ==============================
+// GET ALL UNIQUE CATEGORIES
+// ==============================
+router.get(
+  '/categories',
+
+  async (req, res) => {
+    try {
+      const Order = require('../models/Order');
+      const categories = await Product.distinct('category');
+
+      // Get non-cancelled orders to aggregate sales volume
+      const orders = await Order.find({ status: { $ne: 'Cancelled' } }).select('orderItems');
+
+      // Map product IDs to their categories
+      const products = await Product.find({}).select('category');
+      const productCategoryMap = {};
+      products.forEach(p => {
+        if (p.category) {
+          productCategoryMap[p._id.toString()] = p.category;
+        }
+      });
+
+      // Sum quantities sold for each category
+      const salesCounts = {};
+      categories.forEach(cat => {
+        salesCounts[cat] = 0;
+      });
+
+      orders.forEach(order => {
+        if (order.orderItems) {
+          order.orderItems.forEach(item => {
+            const cat = productCategoryMap[item.product?.toString()];
+            if (cat && salesCounts[cat] !== undefined) {
+              salesCounts[cat] += (item.qty || 0);
+            }
+          });
+        }
+      });
+
+      // Sort categories descending by sales volume
+      categories.sort((a, b) => salesCounts[b] - salesCounts[a]);
+
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({
+        message: error.message,
+      });
+    }
+  },
+);
+
+// ==============================
 // GET SINGLE PRODUCT
 // ==============================
 router.get(
   '/:id',
 
+  protect.optionalProtect,
+
   async (req, res) => {
     try {
       const product = await Product.findById(req.params.id);
 
-      res.json(product);
+      if (!product) {
+        return res.status(404).json({
+          message: 'Product not found',
+        });
+      }
+
+      const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
+      const productObj = product.toObject();
+
+      if (!isStaff) {
+        delete productObj.moderatorPrice;
+      }
+
+      res.json(productObj);
     } catch (error) {
       res.status(500).json({
         message: error.message,
@@ -127,6 +194,8 @@ router.get(
 // ==============================
 router.get(
   '/',
+
+  protect.optionalProtect,
 
   async (req, res) => {
     try {
@@ -198,8 +267,17 @@ router.get(
           createdAt: -1,
         });
 
+      const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
+      const sanitizedProducts = products.map(p => {
+        const pObj = p.toObject();
+        if (!isStaff) {
+          delete pObj.moderatorPrice;
+        }
+        return pObj;
+      });
+
       res.json({
-        products,
+        products: sanitizedProducts,
 
         page,
 
@@ -271,6 +349,8 @@ router.put(
       product.price = req.body.price ?? product.price;
 
       product.salePrice = req.body.salePrice;
+
+      product.moderatorPrice = req.body.moderatorPrice;
 
       product.shortDesc = req.body.shortDesc || product.shortDesc;
 
