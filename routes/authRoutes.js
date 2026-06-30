@@ -132,10 +132,20 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Phone and password are required' });
     }
 
-    // Find User
-    const user = await User.findOne({ phone });
-    if (!user || !user.isVerified) {
-      return res.status(400).json({ message: 'Phone number not registered' });
+    // Find User (supports both phone and legacy email)
+    const user = await User.findOne({
+      $or: [
+        { phone: phone },
+        { email: phone }
+      ]
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'User not registered' });
+    }
+
+    if (user.role === 'customer' && !user.isVerified) {
+      return res.status(400).json({ message: 'Phone number not verified' });
     }
 
     // Check Password
