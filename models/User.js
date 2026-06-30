@@ -23,6 +23,38 @@ const userSchema = new mongoose.Schema({
     default: 'customer',
   },
 
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    uppercase: true,
+  },
+
+  facebookLink: {
+    type: String,
+    default: '',
+  },
+
+  address: {
+    type: String,
+    default: '',
+  },
+
+  thana: {
+    type: String,
+    default: '',
+  },
+
+  district: {
+    type: String,
+    default: '',
+  },
+
+  notes: {
+    type: String,
+    default: '',
+  },
+
   otp: {
     type: String,
     default: null,

@@ -7,6 +7,11 @@ const { sendSMS } = require('../config/smsHelper');
 
 const router = express.Router();
 
+const validatePassword = (password) => {
+  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
+  return regex.test(password);
+};
+
 // 1. SEND OTP FOR REGISTRATION
 router.post('/send-otp', async (req, res) => {
   try {
@@ -89,6 +94,12 @@ router.post('/register', async (req, res) => {
 
     if (!name || !phone || !password) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (!validatePassword(password)) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*)',
+      });
     }
 
     const user = await User.findOne({ phone });
@@ -192,6 +203,12 @@ router.post('/reset-password', async (req, res) => {
 
     if (!phone || !otp || !newPassword) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (!validatePassword(newPassword)) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*)',
+      });
     }
 
     const user = await User.findOne({ phone });

@@ -20,6 +20,12 @@ const userRoutes = require('./routes/userRoutes');
 
 const expenseRoutes = require('./routes/expenseRoutes');
 
+const supplierRoutes = require('./routes/supplierRoutes');
+
+const couponRoutes = require('./routes/couponRoutes');
+
+const settingsRoutes = require('./routes/settingsRoutes');
+
 const app = express();
 
 // MIDDLEWARE
@@ -45,6 +51,12 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
 
 app.use('/api/expenses', expenseRoutes);
+
+app.use('/api/suppliers', supplierRoutes);
+
+app.use('/api/coupons', couponRoutes);
+
+app.use('/api/settings', settingsRoutes);
 
 // MONGODB
 mongoose

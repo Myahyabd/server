@@ -39,6 +39,34 @@ const variantSchema = mongoose.Schema(
       required: true,
     },
 
+    salePrice: {
+      type: Number,
+    },
+
+    moderatorPrice: {
+      type: Number,
+    },
+
+    vipPrice: {
+      type: Number,
+      default: 0,
+    },
+
+    wholesalePrice: {
+      type: Number,
+      default: 0,
+    },
+
+    buyingPrice: {
+      type: Number,
+      default: 0,
+    },
+
+    landedCost: {
+      type: Number,
+      default: 0,
+    },
+
     stock: {
       type: Number,
       default: 0,
@@ -80,6 +108,26 @@ const productSchema = mongoose.Schema(
 
     moderatorPrice: {
       type: Number,
+    },
+
+    vipPrice: {
+      type: Number,
+      default: 0,
+    },
+
+    wholesalePrice: {
+      type: Number,
+      default: 0,
+    },
+
+    buyingPrice: {
+      type: Number,
+      default: 0,
+    },
+
+    landedCost: {
+      type: Number,
+      default: 0,
     },
 
     shortDesc: {
