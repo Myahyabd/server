@@ -111,6 +111,7 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     // Aggregates: Best Selling Products
     const productSalesMap = {};
     activeOrders.forEach(o => {
+      if (!o.orderItems || !Array.isArray(o.orderItems)) return;
       o.orderItems.forEach(item => {
         if (!item.product) return;
         const pId = item.product.toString();
@@ -146,7 +147,9 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       const modMap = {};
       const allMods = await User.find({ role: 'moderator' }).select('name');
       const modNameLookup = {};
-      allMods.forEach(m => { modNameLookup[m._id.toString()] = m.name; });
+      allMods.forEach(m => { 
+        if (m._id) modNameLookup[m._id.toString()] = m.name; 
+      });
 
       activeOrders.forEach(o => {
         if (!o.receivedBy) return;
