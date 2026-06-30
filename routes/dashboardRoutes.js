@@ -32,13 +32,14 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
 
     // Helper: calculate profit of an order
     const calculateOrderProfit = (order) => {
+      const landedCost = order.landedCostTotal || 0;
       if (order.isGift) {
         const packaging = order.giftDetails?.packagingCost || 0;
         const other = order.giftDetails?.otherExpense || 0;
         const del = order.deliveryCharge || 0;
-        return 0 - order.landedCostTotal - packaging - other - del;
+        return 0 - landedCost - packaging - other - del;
       } else {
-        return order.totalPrice - order.landedCostTotal - order.deliveryCharge;
+        return order.totalPrice - landedCost - (order.deliveryCharge || 0);
       }
     };
 
@@ -111,6 +112,7 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     const productSalesMap = {};
     activeOrders.forEach(o => {
       o.orderItems.forEach(item => {
+        if (!item.product) return;
         const pId = item.product.toString();
         if (!productSalesMap[pId]) {
           productSalesMap[pId] = { name: item.name, qty: 0, revenue: 0 };
