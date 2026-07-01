@@ -242,6 +242,10 @@ router.put('/settings', protect, adminOnly, async (req, res) => {
     settings.bannerLink = req.body.bannerLink ?? settings.bannerLink;
     settings.showBanner = req.body.showBanner !== undefined ? req.body.showBanner : settings.showBanner;
 
+    if (req.body.categoryImages !== undefined) {
+      settings.categoryImages = req.body.categoryImages;
+    }
+
     await settings.save();
     res.json(settings);
   } catch (error) {

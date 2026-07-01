@@ -38,6 +38,18 @@ const homeSettingsSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    categoryImages: [
+      {
+        categoryName: {
+          type: String,
+          required: true,
+        },
+        imageUrl: {
+          type: String,
+          required: true,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
