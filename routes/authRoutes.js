@@ -243,12 +243,33 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// 7. GET ME (PROTECTED ROUTE)
-router.get('/me', protect, (req, res) => {
-  res.json({
-    message: 'Protected Route Working',
-    user: req.user,
-  });
+// 8. TEMPORARY: SET PHONE FOR LEGACY EMAIL USER
+router.post('/set-admin-phone', async (req, res) => {
+  try {
+    const { email, phone, secret } = req.body;
+    
+    // Safety check using JWT_SECRET to prevent unauthorized calls
+    if (secret !== process.env.JWT_SECRET) {
+      return res.status(401).json({ message: 'Unauthorized secret' });
+    }
+
+    if (!email || !phone) {
+      return res.status(400).json({ message: 'Email and phone are required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User with this email not found' });
+    }
+
+    user.phone = phone;
+    user.isVerified = true; // Verify so they can login immediately
+    await user.save();
+
+    res.json({ message: `Successfully updated phone number of ${user.name} to ${phone}` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 module.exports = router;
