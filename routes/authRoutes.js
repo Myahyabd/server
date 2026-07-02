@@ -8,7 +8,7 @@ const { sendSMS } = require('../config/smsHelper');
 const router = express.Router();
 
 const validatePassword = (password) => {
-  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
+  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
   return regex.test(password);
 };
 
@@ -90,7 +90,7 @@ router.post('/verify-otp', async (req, res) => {
 // 3. COMPLETE REGISTRATION (SAVE NAME AND PASSWORD)
 router.post('/register', async (req, res) => {
   try {
-    const { name, phone, password } = req.body;
+    const { name, phone, password, email } = req.body;
 
     if (!name || !phone || !password) {
       return res.status(400).json({ message: 'All fields are required' });
@@ -98,7 +98,7 @@ router.post('/register', async (req, res) => {
 
     if (!validatePassword(password)) {
       return res.status(400).json({
-        message: 'Password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*)',
+        message: 'Password must be at least 6 characters and include one uppercase letter, one lowercase letter, and one number.',
       });
     }
 
@@ -111,13 +111,40 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Phone number is not verified' });
     }
 
+    if (email) {
+      const existingEmail = await User.findOne({ email });
+      if (existingEmail && existingEmail._id.toString() !== user._id.toString()) {
+        return res.status(400).json({ message: 'Email address already registered' });
+      }
+      user.email = email;
+    } else {
+      user.email = undefined;
+    }
+
     // Update user name and hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     user.name = name;
     user.password = hashedPassword;
     await user.save();
 
-    res.status(201).json({ message: 'Registration completed successfully' });
+    // Create Token for auto-login
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      message: 'Registration completed successfully',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -217,7 +244,7 @@ router.post('/reset-password', async (req, res) => {
 
     if (!validatePassword(newPassword)) {
       return res.status(400).json({
-        message: 'Password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*)',
+        message: 'Password must be at least 6 characters and include one uppercase letter, one lowercase letter, and one number.',
       });
     }
 
