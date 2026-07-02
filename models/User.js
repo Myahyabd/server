@@ -74,6 +74,61 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+
+  profilePhoto: {
+    type: String,
+    default: '',
+  },
+
+  position: {
+    type: String,
+    default: '',
+  },
+
+  shortBio: {
+    type: String,
+    default: '',
+  },
+
+  fullBio: {
+    type: String,
+    default: '',
+  },
+
+  responsibilities: {
+    type: String,
+    default: '',
+  },
+
+  joinedNusHaat: {
+    type: String,
+    default: '',
+  },
+
+  joiningReason: {
+    type: String,
+    default: '',
+  },
+
+  skills: {
+    type: String,
+    default: '',
+  },
+
+  linkedinLink: {
+    type: String,
+    default: '',
+  },
+
+  githubLink: {
+    type: String,
+    default: '',
+  },
+
+  websiteLink: {
+    type: String,
+    default: '',
+  },
 });
 
 module.exports = mongoose.model('User', userSchema);
