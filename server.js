@@ -61,7 +61,16 @@ app.use('/api/settings', settingsRoutes);
 // MONGODB
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB Connected'))
+  .then(async () => {
+    console.log('MongoDB Connected');
+    try {
+      // Safely drop the old legacy email unique index if it exists in MongoDB
+      await mongoose.connection.db.collection('users').dropIndex('email_1');
+      console.log('Successfully dropped old email unique index (email_1)');
+    } catch (err) {
+      console.log('Note: email_1 index was not dropped (probably already removed or did not exist)');
+    }
+  })
   .catch(err => console.log(err));
 
 // SERVER
