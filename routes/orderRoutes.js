@@ -123,6 +123,32 @@ router.post('/', protect, async (req, res) => {
       let costPrice = 0;
       let sellPrice = item.price; // default to passed price
 
+      // Price constraints validation for moderators
+      const isMod = req.user.role === 'moderator';
+      if (isMod && !isGift) {
+        let minPrice = 0;
+        let maxPrice = 0;
+
+        if (item.variant) {
+          const variant = product.variants.find(v => v.name === item.variant);
+          if (!variant) {
+            return res.status(400).json({ message: `Variant ${item.variant} not found for ${product.name}` });
+          }
+          minPrice = variant.moderatorPrice || 0;
+          maxPrice = variant.salePrice || variant.price || 0;
+        } else {
+          minPrice = product.moderatorPrice || 0;
+          maxPrice = product.salePrice || product.price || 0;
+        }
+
+        if (sellPrice < minPrice) {
+          return res.status(400).json({ message: `Selling Price cannot be lower than the Moderator Price (৳${minPrice}).` });
+        }
+        if (sellPrice > maxPrice) {
+          return res.status(400).json({ message: `Selling Price cannot exceed the Customer Sale Price (৳${maxPrice}).` });
+        }
+      }
+
       if (item.variant) {
         const variant = product.variants.find(v => v.name === item.variant);
         if (!variant) {
