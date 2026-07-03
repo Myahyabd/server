@@ -224,10 +224,16 @@ router.put('/admin/withdrawals/:id', protect, adminOnly, async (req, res) => {
   }
 });
 
-// 7. GET STAFF WALLETS LIST (Admin Only)
+// 7. GET WALLETS/USER REFERRAL CODES LIST (Admin Only)
 router.get('/admin/wallets', protect, adminOnly, async (req, res) => {
   try {
-    const users = await User.find({ role: { $in: ['admin', 'moderator'] } })
+    const { all } = req.query;
+    let query = { role: { $in: ['admin', 'moderator'] } };
+    if (all === 'true') {
+      // Find all users who have a referral code or just everyone
+      query = {};
+    }
+    const users = await User.find(query)
       .select('name referralCode role wallet email phone')
       .sort({ name: 1 });
     res.json(users);
