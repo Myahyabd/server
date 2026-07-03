@@ -129,6 +129,38 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  wallet: {
+    availableBalance: { type: Number, default: 0 },
+    pendingCommission: { type: Number, default: 0 },
+    paidCommission: { type: Number, default: 0 },
+    totalReferralOrders: { type: Number, default: 0 },
+    totalSalesGenerated: { type: Number, default: 0 },
+    totalDiscountGiven: { type: Number, default: 0 }
+  }
+});
+
+userSchema.pre('save', async function (next) {
+  if (!this.referralCode) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let isUnique = false;
+    let code = '';
+    
+    // Safety check to prevent collisions
+    while (!isUnique) {
+      code = 'NUS-';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      
+      const existing = await mongoose.models.User.findOne({ referralCode: code });
+      if (!existing) {
+        isUnique = true;
+      }
+    }
+    
+    this.referralCode = code;
+  }
+  next();
 });
 
 module.exports = mongoose.model('User', userSchema);

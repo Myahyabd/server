@@ -8,6 +8,7 @@ const User = require('../models/User');
 const SystemSettings = require('../models/SystemSettings');
 const protect = require('../middleware/authMiddleware');
 const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
+const WalletTransaction = require('../models/WalletTransaction');
 
 // HELPER: Stock transition manager on status change
 const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
@@ -218,6 +219,8 @@ router.post('/', protect, async (req, res) => {
 
     let referralDiscount = 0;
     let refUsedCode = '';
+    let referralCommission = 0;
+    let referralOwnerId = null;
     if (referralCode && !isGift) {
       const moderator = await User.findOne({
         referralCode: referralCode.toUpperCase(),
@@ -226,6 +229,7 @@ router.post('/', protect, async (req, res) => {
       const refConfig = settings.referralSettings;
       if (moderator && refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
         refUsedCode = moderator.referralCode;
+        referralOwnerId = moderator._id;
         if (refConfig.discountType === 'Percentage') {
           referralDiscount = (refConfig.value / 100) * subtotal;
           if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
@@ -233,6 +237,13 @@ router.post('/', protect, async (req, res) => {
           }
         } else {
           referralDiscount = refConfig.value;
+        }
+
+        // Calculate Commission
+        if (refConfig.commissionType === 'Percentage') {
+          referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
+        } else {
+          referralCommission = refConfig.commissionValue || 50;
         }
       }
     }
@@ -297,6 +308,9 @@ router.post('/', protect, async (req, res) => {
       couponDiscount,
       referralUsed: refUsedCode,
       referralDiscount,
+      referralCommission,
+      referralCommissionStatus: 'Pending',
+      referralOwner: referralOwnerId,
       landedCostTotal,
       isGift: !!isGift,
       giftDetails: isGift ? {
@@ -316,6 +330,35 @@ router.post('/', protect, async (req, res) => {
     });
 
     const createdOrder = await order.save();
+
+    // Trigger commission for auto-delivered POS / Offline orders
+    if (createdOrder.status === 'Delivered' && createdOrder.referralOwner && createdOrder.referralCommission > 0) {
+      const owner = await User.findById(createdOrder.referralOwner);
+      if (owner) {
+        if (!owner.wallet) {
+          owner.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
+        }
+        owner.wallet.availableBalance += createdOrder.referralCommission;
+        owner.wallet.totalReferralOrders += 1;
+        owner.wallet.totalSalesGenerated += (createdOrder.totalPrice - createdOrder.deliveryCharge - createdOrder.codCharge);
+        owner.wallet.totalDiscountGiven += createdOrder.referralDiscount;
+        
+        createdOrder.referralCommissionStatus = 'Earned';
+        await createdOrder.save();
+
+        await WalletTransaction.create({
+          user: owner._id,
+          type: 'Commission',
+          amount: createdOrder.referralCommission,
+          balanceAfter: owner.wallet.availableBalance,
+          status: 'Completed',
+          note: `Commission earned for POS Order #${createdOrder._id}`,
+          order: createdOrder._id
+        });
+        await owner.save();
+      }
+    }
+
     res.status(201).json(createdOrder);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -408,6 +451,85 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
 
     if (paymentStatus) {
       order.paymentStatus = paymentStatus;
+    }
+
+    // Referral Commission status logic
+    if (order.referralOwner && order.referralCommission > 0) {
+      const owner = await User.findById(order.referralOwner);
+      if (owner) {
+        if (!owner.wallet) {
+          owner.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
+        }
+
+        // Transition 1: From Pending to Delivered (Credit Wallet Available Balance)
+        if (status === 'Delivered' && order.referralCommissionStatus === 'Pending') {
+          owner.wallet.availableBalance += order.referralCommission;
+          owner.wallet.totalReferralOrders += 1;
+          owner.wallet.totalSalesGenerated += (order.totalPrice - order.deliveryCharge - order.codCharge);
+          owner.wallet.totalDiscountGiven += order.referralDiscount;
+          
+          order.referralCommissionStatus = 'Earned';
+
+          await WalletTransaction.create({
+            user: owner._id,
+            type: 'Commission',
+            amount: order.referralCommission,
+            balanceAfter: owner.wallet.availableBalance,
+            status: 'Completed',
+            note: `Commission earned for Order #${order._id}`,
+            order: order._id
+          });
+          
+          await owner.save();
+        } 
+        // Transition 2: From Earned to Cancelled/Returned/Refunded (Revoke Wallet Available Balance)
+        else if (['Cancelled', 'Returned', 'Refunded'].includes(status) && order.referralCommissionStatus === 'Earned') {
+          owner.wallet.availableBalance -= order.referralCommission;
+          if (owner.wallet.availableBalance < 0) owner.wallet.availableBalance = 0;
+          owner.wallet.totalReferralOrders = Math.max(0, owner.wallet.totalReferralOrders - 1);
+          owner.wallet.totalSalesGenerated = Math.max(0, owner.wallet.totalSalesGenerated - (order.totalPrice - order.deliveryCharge - order.codCharge));
+          owner.wallet.totalDiscountGiven = Math.max(0, owner.wallet.totalDiscountGiven - order.referralDiscount);
+
+          order.referralCommissionStatus = 'Cancelled';
+
+          await WalletTransaction.create({
+            user: owner._id,
+            type: 'Commission',
+            amount: -order.referralCommission,
+            balanceAfter: owner.wallet.availableBalance,
+            status: 'Completed',
+            note: `Commission revoked (Order status changed to ${status})`,
+            order: order._id
+          });
+
+          await owner.save();
+        }
+        // Transition 3: From Pending to Cancelled/Returned/Refunded (Cancel pending commission)
+        else if (['Cancelled', 'Returned', 'Refunded'].includes(status) && order.referralCommissionStatus === 'Pending') {
+          order.referralCommissionStatus = 'Cancelled';
+        }
+        // Transition 4: From Cancelled/Returned/Refunded back to Delivered (Re-credit Wallet Available Balance)
+        else if (status === 'Delivered' && order.referralCommissionStatus === 'Cancelled') {
+          owner.wallet.availableBalance += order.referralCommission;
+          owner.wallet.totalReferralOrders += 1;
+          owner.wallet.totalSalesGenerated += (order.totalPrice - order.deliveryCharge - order.codCharge);
+          owner.wallet.totalDiscountGiven += order.referralDiscount;
+          
+          order.referralCommissionStatus = 'Earned';
+
+          await WalletTransaction.create({
+            user: owner._id,
+            type: 'Commission',
+            amount: order.referralCommission,
+            balanceAfter: owner.wallet.availableBalance,
+            status: 'Completed',
+            note: `Commission re-earned for Order #${order._id}`,
+            order: order._id
+          });
+          
+          await owner.save();
+        }
+      }
     }
 
     await order.save();

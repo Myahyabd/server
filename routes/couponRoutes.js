@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Coupon = require('../models/Coupon');
+const User = require('../models/User');
+const Order = require('../models/Order');
+const SystemSettings = require('../models/SystemSettings');
 const protect = require('../middleware/authMiddleware');
 const { adminOnly } = require('../middleware/roleMiddleware');
 
@@ -63,9 +66,70 @@ router.post('/validate', protect, async (req, res) => {
     const { code, orderAmount } = req.body;
     if (!code) return res.status(400).json({ message: 'Coupon code is required' });
 
-    const coupon = await Coupon.findOne({ code: code.toUpperCase(), status: 'Active' });
+    let coupon = await Coupon.findOne({ code: code.toUpperCase(), status: 'Active' });
     if (!coupon) {
-      return res.status(404).json({ message: 'Invalid or inactive coupon code' });
+      // Check if it matches a staff referral code
+      const staffUser = await User.findOne({ referralCode: code.toUpperCase() });
+      if (staffUser && ['admin', 'moderator'].includes(staffUser.role)) {
+        
+        // User cannot use their own referral code
+        if (staffUser._id.toString() === req.user.id.toString()) {
+          return res.status(400).json({ message: 'You cannot use your own referral code' });
+        }
+
+        // Fetch settings
+        const settings = await SystemSettings.findOne();
+        const refSettings = settings?.referralSettings;
+        if (!refSettings || !refSettings.enabled) {
+          return res.status(400).json({ message: 'Referral discount system is currently disabled' });
+        }
+
+        // Expiry check
+        if (refSettings.expiryDate && new Date() > refSettings.expiryDate) {
+          return res.status(400).json({ message: 'Referral code has expired' });
+        }
+
+        // Usage limit check
+        if (refSettings.usageLimit !== null && refSettings.usageLimit > 0) {
+          const usedCount = await Order.countDocuments({ referralUsed: code.toUpperCase(), status: { $ne: 'Cancelled' } });
+          if (usedCount >= refSettings.usageLimit) {
+            return res.status(400).json({ message: 'Referral code usage limit reached' });
+          }
+        }
+
+        // Min Order Amount check
+        const amount = Number(orderAmount || 0);
+        if (amount < refSettings.minOrder) {
+          return res.status(400).json({ message: `Minimum order amount of ৳${refSettings.minOrder} is required` });
+        }
+
+        // Calculate Discount
+        let discount = 0;
+        if (refSettings.discountType === 'Percentage') {
+          discount = (refSettings.value / 100) * amount;
+          if (refSettings.maxDiscount !== null && discount > refSettings.maxDiscount) {
+            discount = refSettings.maxDiscount;
+          }
+        } else {
+          discount = refSettings.value;
+        }
+
+        // Discount cannot exceed order amount
+        if (discount > amount) {
+          discount = amount;
+        }
+
+        return res.json({
+          message: 'Referral code applied successfully!',
+          isReferral: true,
+          code: staffUser.referralCode,
+          discountType: refSettings.discountType,
+          value: refSettings.value,
+          discountAmount: discount
+        });
+      }
+
+      return res.status(404).json({ message: 'Invalid or inactive coupon or referral code' });
     }
 
     // Expiry Check

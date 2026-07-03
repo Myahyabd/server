@@ -138,6 +138,23 @@ const orderSchema = mongoose.Schema(
       default: 0,
     },
 
+    referralCommission: {
+      type: Number,
+      default: 0,
+    },
+
+    referralCommissionStatus: {
+      type: String,
+      enum: ['Pending', 'Earned', 'Cancelled'],
+      default: 'Pending',
+    },
+
+    referralOwner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
     landedCostTotal: {
       type: Number,
       default: 0,

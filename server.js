@@ -26,6 +26,7 @@ const couponRoutes = require('./routes/couponRoutes');
 
 const settingsRoutes = require('./routes/settingsRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const referralRoutes = require('./routes/referralRoutes');
 
 const app = express();
 
@@ -60,6 +61,8 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/settings', settingsRoutes);
 
 app.use('/api/reviews', reviewRoutes);
+
+app.use('/api/referrals', referralRoutes);
 
 // MONGODB
 mongoose

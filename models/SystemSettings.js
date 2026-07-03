@@ -81,6 +81,23 @@ const systemSettingsSchema = new mongoose.Schema(
         type: Number,
         default: 200,
       },
+      expiryDate: {
+        type: Date,
+        default: null,
+      },
+      usageLimit: {
+        type: Number,
+        default: null,
+      },
+      commissionType: {
+        type: String,
+        enum: ['Percentage', 'Fixed'],
+        default: 'Fixed',
+      },
+      commissionValue: {
+        type: Number,
+        default: 50,
+      },
     },
     paymentMethods: [
       {
