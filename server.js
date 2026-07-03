@@ -25,6 +25,7 @@ const supplierRoutes = require('./routes/supplierRoutes');
 const couponRoutes = require('./routes/couponRoutes');
 
 const settingsRoutes = require('./routes/settingsRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 const app = express();
 
@@ -57,6 +58,8 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/coupons', couponRoutes);
 
 app.use('/api/settings', settingsRoutes);
+
+app.use('/api/reviews', reviewRoutes);
 
 // MONGODB
 mongoose
