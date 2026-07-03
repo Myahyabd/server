@@ -243,6 +243,13 @@ router.put('/settings', protect, adminOnly, async (req, res) => {
       settings.categoryImages = req.body.categoryImages;
     }
 
+    settings.heroSlides = req.body.heroSlides !== undefined ? req.body.heroSlides : settings.heroSlides;
+    settings.showSearchBox = req.body.showSearchBox !== undefined ? req.body.showSearchBox : settings.showSearchBox;
+    settings.showStatistics = req.body.showStatistics !== undefined ? req.body.showStatistics : settings.showStatistics;
+    settings.showTrustBadges = req.body.showTrustBadges !== undefined ? req.body.showTrustBadges : settings.showTrustBadges;
+    settings.statistics = req.body.statistics !== undefined ? req.body.statistics : settings.statistics;
+    settings.trustBadges = req.body.trustBadges !== undefined ? req.body.trustBadges : settings.trustBadges;
+
     await settings.save();
     res.json(settings);
   } catch (error) {
