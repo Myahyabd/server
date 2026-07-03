@@ -190,6 +190,21 @@ router.get('/profile', protect, async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+    
+    // Generate referralCode on-the-fly for existing users if missing
+    if (!user.referralCode) {
+      let code = '';
+      let exists = true;
+      while (exists) {
+        const suffix = Math.floor(100000 + Math.random() * 900000);
+        code = `NUS-${suffix}`;
+        const duplicate = await User.findOne({ referralCode: code });
+        if (!duplicate) exists = false;
+      }
+      user.referralCode = code;
+      await user.save();
+    }
+
     res.json(user);
   } catch (error) {
     res.status(500).json({ message: error.message });
