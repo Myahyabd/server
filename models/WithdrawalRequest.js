@@ -20,6 +20,14 @@ const withdrawalRequestSchema = new mongoose.Schema(
       type: String,
       required: true
     },
+    accountName: {
+      type: String,
+      default: ''
+    },
+    transactionId: {
+      type: String,
+      default: ''
+    },
     note: {
       type: String,
       default: ''

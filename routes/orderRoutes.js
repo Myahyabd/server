@@ -180,6 +180,14 @@ router.post('/', protect, async (req, res) => {
       subtotal += sellPrice * item.qty;
       landedCostTotal += costPrice * item.qty;
 
+      let modPrice = 0;
+      if (item.variant) {
+        const variant = product.variants.find(v => v.name === item.variant);
+        modPrice = variant ? (variant.moderatorPrice || 0) : 0;
+      } else {
+        modPrice = product.moderatorPrice || 0;
+      }
+
       calculatedOrderItems.push({
         product: item.product,
         name: product.name,
@@ -187,7 +195,10 @@ router.post('/', protect, async (req, res) => {
         price: isGift ? 0 : sellPrice,
         buyingCost: costPrice,
         qty: item.qty,
-        variant: item.variant || ''
+        variant: item.variant || '',
+        moderatorPrice: modPrice,
+        sellingPrice: sellPrice,
+        profitMargin: sellPrice - modPrice
       });
     }
 
@@ -294,6 +305,11 @@ router.post('/', protect, async (req, res) => {
     const finalSubtotal = isGift ? 0 : (subtotal - couponDiscount - referralDiscount);
     const totalPrice = finalSubtotal + deliveryCharge + codCharge;
 
+    const isModeratorOrder = req.body.isModeratorOrder !== undefined ? req.body.isModeratorOrder : (req.user.role === 'moderator');
+    const moderatorProfitTotal = isModeratorOrder
+      ? calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0)
+      : 0;
+
     const order = new Order({
       user: req.user.id,
       orderItems: calculatedOrderItems,
@@ -326,10 +342,35 @@ router.post('/', protect, async (req, res) => {
       deliveredAt: isOffline ? Date.now() : null,
       receivedBy: isOffline ? req.user.id : null,
       createdBy: req.user.id,
-      salesChannel: isOffline ? (salesChannel || 'Offline') : 'Online'
+      salesChannel: isOffline ? (salesChannel || 'Offline') : 'Online',
+      isModeratorOrder,
+      moderatorUser: isModeratorOrder ? req.user.id : null,
+      moderatorProfitTotal
     });
 
     const createdOrder = await order.save();
+
+    // Analytics Tracking Integration
+    try {
+      const CartLog = require('../models/CartLog');
+      const ActionLog = require('../models/ActionLog');
+
+      await CartLog.findOneAndUpdate(
+        { $or: [{ user: req.user.id }, { sessionToken: req.body.sessionToken || 'N/A' }] },
+        { isAbandoned: false }
+      );
+
+      for (const item of createdOrder.orderItems) {
+        await ActionLog.create({
+          type: 'order_place',
+          product: item.product,
+          user: req.user.id,
+          sessionToken: req.body.sessionToken || 'direct_order_session'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update analytics logs on order creation:', err);
+    }
 
     // Trigger commission for auto-delivered POS / Offline orders
     if (createdOrder.status === 'Delivered' && createdOrder.referralOwner && createdOrder.referralCommission > 0) {
@@ -378,6 +419,18 @@ router.get('/my-orders', protect, async (req, res) => {
 });
 
 // ===================================
+// GET MODERATOR PLACED SALES (Moderator/Admin Only)
+// ===================================
+router.get('/moderator-sales', protect, adminOrModerator, async (req, res) => {
+  try {
+    const orders = await Order.find({ moderatorUser: req.user.id }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ===================================
 // GET ALL ORDERS (Admin & Moderator Scoped)
 // ===================================
 router.get('/', protect, adminOrModerator, async (req, res) => {
@@ -396,6 +449,7 @@ router.get('/', protect, adminOrModerator, async (req, res) => {
     const orders = await Order.find(query)
       .populate('user', 'name phone')
       .populate('receivedBy', 'name')
+      .populate('moderatorUser', 'name')
       .sort({ createdAt: -1 });
 
     res.json(orders);
@@ -528,6 +582,74 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
           });
           
           await owner.save();
+        }
+      }
+    }
+    // ===========================================
+    // MODERATOR PROFIT COMMISSION TRIGGER
+    // ===========================================
+    if (order.isModeratorOrder && order.moderatorUser && order.moderatorProfitTotal > 0) {
+      const mod = await User.findById(order.moderatorUser);
+      if (mod) {
+        if (!mod.wallet) {
+          mod.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
+        }
+
+        // Transition 1: From not Delivered to Delivered (Credit Moderator Available Balance)
+        if (status === 'Delivered' && order.moderatorProfitStatus !== 'Earned') {
+          mod.wallet.availableBalance += order.moderatorProfitTotal;
+          order.moderatorProfitStatus = 'Earned';
+
+          await WalletTransaction.create({
+            user: mod._id,
+            type: 'Commission',
+            amount: order.moderatorProfitTotal,
+            balanceAfter: mod.wallet.availableBalance,
+            status: 'Completed',
+            note: `Moderator profit earned for Order #${order._id}`,
+            order: order._id
+          });
+          
+          await mod.save();
+        } 
+        // Transition 2: From Earned to Cancelled/Returned/Refunded (Revoke Moderator Available Balance)
+        else if (['Cancelled', 'Returned', 'Refunded'].includes(status) && order.moderatorProfitStatus === 'Earned') {
+          mod.wallet.availableBalance -= order.moderatorProfitTotal;
+          if (mod.wallet.availableBalance < 0) mod.wallet.availableBalance = 0;
+          order.moderatorProfitStatus = 'Cancelled';
+
+          await WalletTransaction.create({
+            user: mod._id,
+            type: 'Commission',
+            amount: -order.moderatorProfitTotal,
+            balanceAfter: mod.wallet.availableBalance,
+            status: 'Completed',
+            note: `Moderator profit revoked (Order status changed to ${status})`,
+            order: order._id
+          });
+
+          await mod.save();
+        }
+        // Transition 3: From Pending to Cancelled/Returned/Refunded
+        else if (['Cancelled', 'Returned', 'Refunded'].includes(status) && order.moderatorProfitStatus === 'Pending') {
+          order.moderatorProfitStatus = 'Cancelled';
+        }
+        // Transition 4: From Cancelled/Returned/Refunded back to Delivered
+        else if (status === 'Delivered' && order.moderatorProfitStatus === 'Cancelled') {
+          mod.wallet.availableBalance += order.moderatorProfitTotal;
+          order.moderatorProfitStatus = 'Earned';
+
+          await WalletTransaction.create({
+            user: mod._id,
+            type: 'Commission',
+            amount: order.moderatorProfitTotal,
+            balanceAfter: mod.wallet.availableBalance,
+            status: 'Completed',
+            note: `Moderator profit re-earned for Order #${order._id}`,
+            order: order._id
+          });
+          
+          await mod.save();
         }
       }
     }

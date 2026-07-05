@@ -175,8 +175,20 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       }
     });
 
+    let unclaimedPendingCount = 0;
+    if (!isAdmin) {
+      unclaimedPendingCount = await Order.countDocuments({
+        status: 'Pending',
+        $or: [
+          { receivedBy: { $exists: false } },
+          { receivedBy: null }
+        ]
+      });
+    }
+
     res.json({
       role: isAdmin ? 'admin' : 'moderator',
+      unclaimedPendingCount,
       todaySales,
       yesterdaySales,
       monthlySales,

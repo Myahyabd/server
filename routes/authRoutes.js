@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const protect = require('../middleware/authMiddleware');
 const { sendSMS } = require('../config/smsHelper');
+const ActionLog = require('../models/ActionLog');
 
 const router = express.Router();
 
@@ -127,6 +128,16 @@ router.post('/register', async (req, res) => {
     user.password = hashedPassword;
     await user.save();
 
+    try {
+      await ActionLog.create({
+        type: 'register',
+        user: user._id,
+        sessionToken: req.body.sessionToken || 'direct_register_session'
+      });
+    } catch (err) {
+      console.error('Failed to log registration action:', err);
+    }
+
     // Create Token for auto-login
     const token = jwt.sign(
       { id: user._id },
@@ -187,6 +198,16 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    try {
+      await ActionLog.create({
+        type: 'login',
+        user: user._id,
+        sessionToken: req.body.sessionToken || 'direct_login_session'
+      });
+    } catch (err) {
+      console.error('Failed to log login action:', err);
+    }
 
     // Response
     res.json({
@@ -294,6 +315,39 @@ router.post('/set-admin-phone', async (req, res) => {
     await user.save();
 
     res.json({ message: `Successfully updated phone number of ${user.name} to ${phone}` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// CHANGE PASSWORD (Logged In User)
+router.put('/change-password', protect, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required' });
+    }
+
+    if (!validatePassword(newPassword)) {
+      return res.status(400).json({
+        message: 'Password must be at least 6 characters and include one uppercase letter, one lowercase letter, and one number.',
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Incorrect current password' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

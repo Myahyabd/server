@@ -36,6 +36,12 @@ const expenseSchema = mongoose.Schema(
       type: String,
       default: '',
     },
+    productCost: { type: Number, default: 0 },
+    courierCost: { type: Number, default: 0 },
+    transportCost: { type: Number, default: 0 },
+    packagingCost: { type: Number, default: 0 },
+    miscCost: { type: Number, default: 0 },
+    isModeratorExpense: { type: Boolean, default: false }
   },
   {
     timestamps: true,

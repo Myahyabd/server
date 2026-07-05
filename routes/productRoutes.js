@@ -104,6 +104,37 @@ router.post(
 );
 
 // ==============================
+// GET SEARCH SUGGESTIONS (Autocomplete / Instant Search)
+// ==============================
+router.get(
+  '/search/suggestions',
+  async (req, res) => {
+    try {
+      const query = req.query.q || '';
+      if (!query.trim()) {
+        const popular = await Product.find({}).sort({ rating: -1, numReviews: -1 }).limit(6);
+        return res.json(popular);
+      }
+
+      const regex = new RegExp(query, 'i');
+      const products = await Product.find({
+        $or: [
+          { name: regex },
+          { category: regex },
+          { shortDesc: regex }
+        ]
+      })
+      .select('name images price salePrice rating category')
+      .limit(8);
+
+      res.json(products);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+);
+
+// ==============================
 // GET ALL UNIQUE CATEGORIES
 // ==============================
 router.get(

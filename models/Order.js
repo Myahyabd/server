@@ -47,6 +47,18 @@ const orderSchema = mongoose.Schema(
           type: Number,
           default: 0,
         },
+        moderatorPrice: {
+          type: Number,
+          default: 0,
+        },
+        sellingPrice: {
+          type: Number,
+          default: 0,
+        },
+        profitMargin: {
+          type: Number,
+          default: 0,
+        },
       },
     ],
 
@@ -215,6 +227,27 @@ const orderSchema = mongoose.Schema(
       type: String,
       enum: ['Online', 'Facebook', 'Offline'],
       default: 'Online',
+    },
+
+    isModeratorOrder: {
+      type: Boolean,
+      default: false,
+    },
+
+    moderatorUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    moderatorProfitTotal: {
+      type: Number,
+      default: 0,
+    },
+    moderatorProfitStatus: {
+      type: String,
+      enum: ['Pending', 'Earned', 'Cancelled'],
+      default: 'Pending',
     },
   },
 

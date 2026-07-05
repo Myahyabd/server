@@ -160,7 +160,7 @@ userSchema.pre('save', async function (next) {
     
     this.referralCode = code;
   }
-  next();
+  if (typeof next === 'function') next();
 });
 
 module.exports = mongoose.model('User', userSchema);

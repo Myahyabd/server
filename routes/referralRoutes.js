@@ -96,13 +96,23 @@ router.get('/wallet', protect, adminOrModerator, async (req, res) => {
   }
 });
 
+// 3b. GET MY WITHDRAWAL REQUESTS (Moderator/Admin Only)
+router.get('/my-withdrawals', protect, adminOrModerator, async (req, res) => {
+  try {
+    const requests = await WithdrawalRequest.find({ user: req.user.id }).sort({ createdAt: -1 });
+    res.json(requests);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // 4. REQUEST WITHDRAWAL (Moderator/Admin Only)
 router.post('/withdraw', protect, adminOrModerator, async (req, res) => {
   try {
-    const { amount, paymentMethod, accountNumber, note } = req.body;
+    const { amount, paymentMethod, accountNumber, accountName, note } = req.body;
 
-    if (!amount || !paymentMethod || !accountNumber) {
-      return res.status(400).json({ message: 'Amount, payment method, and account number are required' });
+    if (!amount || !paymentMethod || !accountNumber || !accountName) {
+      return res.status(400).json({ message: 'Amount, payment method, account name, and account number are required' });
     }
 
     const withdrawVal = Number(amount);
@@ -129,6 +139,7 @@ router.post('/withdraw', protect, adminOrModerator, async (req, res) => {
       amount: withdrawVal,
       paymentMethod,
       accountNumber,
+      accountName: accountName || '',
       note: note || '',
       status: 'Pending'
     });
@@ -140,7 +151,8 @@ router.post('/withdraw', protect, adminOrModerator, async (req, res) => {
       amount: withdrawVal,
       balanceAfter: currentWalletBalance, // remains unchanged until approval
       status: 'Pending',
-      note: `Payout request of ৳${withdrawVal} via ${paymentMethod} (${accountNumber})`
+      note: `Payout request of ৳${withdrawVal} via ${paymentMethod} (${accountNumber})`,
+      method: `${paymentMethod} (${accountNumber})`
     });
 
     res.status(201).json(request);
@@ -191,6 +203,7 @@ router.put('/admin/withdrawals/:id', protect, adminOnly, async (req, res) => {
 
       request.status = 'Approved';
       request.adminNote = adminNote || '';
+      request.transactionId = adminNote || 'N/A';
       request.approvedAt = new Date();
       await request.save();
 
