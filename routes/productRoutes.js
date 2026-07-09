@@ -112,16 +112,31 @@ router.get(
     try {
       const query = req.query.q || '';
       if (!query.trim()) {
-        const popular = await Product.find({}).sort({ rating: -1, numReviews: -1 }).limit(6);
+        const popular = await Product.find({
+          $or: [
+            { hasVariants: false, stock: { $gt: 0 } },
+            { hasVariants: true, 'variants.stock': { $gt: 0 } }
+          ]
+        }).sort({ rating: -1, numReviews: -1 }).limit(6);
         return res.json(popular);
       }
 
       const regex = new RegExp(query, 'i');
       const products = await Product.find({
-        $or: [
-          { name: regex },
-          { category: regex },
-          { shortDesc: regex }
+        $and: [
+          {
+            $or: [
+              { name: regex },
+              { category: regex },
+              { shortDesc: regex }
+            ]
+          },
+          {
+            $or: [
+              { hasVariants: false, stock: { $gt: 0 } },
+              { hasVariants: true, 'variants.stock': { $gt: 0 } }
+            ]
+          }
         ]
       })
       .select('name images price salePrice rating category')
@@ -233,11 +248,26 @@ router.get(
       // SEARCH
       const keyword = req.query.search
         ? {
-            name: {
-              $regex: req.query.search,
-
-              $options: 'i',
-            },
+            $or: [
+              {
+                name: {
+                  $regex: req.query.search,
+                  $options: 'i',
+                },
+              },
+              {
+                brand: {
+                  $regex: req.query.search,
+                  $options: 'i',
+                },
+              },
+              {
+                keywords: {
+                  $regex: req.query.search,
+                  $options: 'i',
+                },
+              },
+            ],
           }
         : {};
 
@@ -267,38 +297,45 @@ router.get(
         };
       }
 
-      // PAGINATION
-      const pageSize = 6;
+      const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
+      const stockFilter = isStaff
+        ? {}
+        : {
+            $or: [
+              { hasVariants: false, stock: { $gt: 0 } },
+              { hasVariants: true, 'variants.stock': { $gt: 0 } }
+            ]
+          };
 
+      // PAGINATION
+      const nopage = req.query.nopage === 'true';
+      const pageSize = 12;
       const page = Number(req.query.page) || 1;
 
       // TOTAL COUNT
       const count = await Product.countDocuments({
         ...keyword,
-
         ...categoryFilter,
-
         ...priceFilter,
+        ...stockFilter,
       });
 
       // PRODUCTS
-      const products = await Product.find({
+      let query = Product.find({
         ...keyword,
-
         ...categoryFilter,
-
         ...priceFilter,
-      })
+        ...stockFilter,
+      });
 
-        .limit(pageSize)
+      if (!nopage) {
+        query = query.limit(pageSize).skip(pageSize * (page - 1));
+      }
 
-        .skip(pageSize * (page - 1))
+      const products = await query.sort({
+        createdAt: -1,
+      });
 
-        .sort({
-          createdAt: -1,
-        });
-
-      const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
       const sanitizedProducts = products.map(p => {
         const pObj = p.toObject();
         if (!isStaff) {
@@ -388,6 +425,10 @@ router.put(
       product.fullDesc = req.body.fullDesc || product.fullDesc;
 
       product.category = req.body.category || product.category;
+
+      product.keywords = req.body.keywords ?? product.keywords;
+
+      product.brand = req.body.brand ?? product.brand;
 
       product.stock = req.body.stock ?? product.stock;
 

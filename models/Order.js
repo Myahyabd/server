@@ -108,6 +108,12 @@ const orderSchema = mongoose.Schema(
       default: 'Unpaid',
     },
 
+    paymentDetails: {
+      senderMobile: { type: String, default: '' },
+      transactionId: { type: String, default: '' },
+      screenshot: { type: String, default: '' },
+    },
+
     totalPrice: {
       type: Number,
       required: true,

@@ -61,7 +61,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
 });
 
 // VALIDATE COUPON (Public / Customer)
-router.post('/validate', protect, async (req, res) => {
+router.post('/validate', protect.optionalProtect || protect, async (req, res) => {
   try {
     const { code, orderAmount } = req.body;
     if (!code) return res.status(400).json({ message: 'Coupon code is required' });

@@ -7,6 +7,9 @@ const storage = new CloudinaryStorage({
   params: {
     folder: 'nus-haat-products',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 1200, crop: 'limit', quality: 'auto', fetch_format: 'auto' }
+    ],
     resource_type: 'image',
   },
 });

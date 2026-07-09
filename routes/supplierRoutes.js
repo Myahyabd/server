@@ -16,6 +16,19 @@ router.get('/', protect, adminOnly, async (req, res) => {
   }
 });
 
+// GET ALL STOCK PURCHASES
+router.get('/purchases/all', protect, adminOnly, async (req, res) => {
+  try {
+    const purchases = await Purchase.find()
+      .populate('product', 'name')
+      .populate('supplier', 'name company phone')
+      .sort({ createdAt: -1 });
+    res.json(purchases);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // GET SUPPLIER DETAILS
 router.get('/:id', protect, adminOnly, async (req, res) => {
   try {

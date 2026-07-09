@@ -9,8 +9,7 @@ const ActionLog = require('../models/ActionLog');
 const router = express.Router();
 
 const validatePassword = (password) => {
-  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
-  return regex.test(password);
+  return password && password.length >= 6;
 };
 
 // 1. SEND OTP FOR REGISTRATION
@@ -99,7 +98,7 @@ router.post('/register', async (req, res) => {
 
     if (!validatePassword(password)) {
       return res.status(400).json({
-        message: 'Password must be at least 6 characters and include one uppercase letter, one lowercase letter, and one number.',
+        message: 'Password must be at least 6 characters.',
       });
     }
 
@@ -265,7 +264,7 @@ router.post('/reset-password', async (req, res) => {
 
     if (!validatePassword(newPassword)) {
       return res.status(400).json({
-        message: 'Password must be at least 6 characters and include one uppercase letter, one lowercase letter, and one number.',
+        message: 'Password must be at least 6 characters.',
       });
     }
 
@@ -330,7 +329,7 @@ router.put('/change-password', protect, async (req, res) => {
 
     if (!validatePassword(newPassword)) {
       return res.status(400).json({
-        message: 'Password must be at least 6 characters and include one uppercase letter, one lowercase letter, and one number.',
+        message: 'Password must be at least 6 characters.',
       });
     }
 

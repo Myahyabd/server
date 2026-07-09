@@ -36,7 +36,6 @@ const variantSchema = mongoose.Schema(
 
     price: {
       type: Number,
-      required: true,
     },
 
     salePrice: {
@@ -75,6 +74,26 @@ const variantSchema = mongoose.Schema(
     image: {
       type: String,
       default: null,
+    },
+
+    sku: {
+      type: String,
+      default: '',
+    },
+
+    barcode: {
+      type: String,
+      default: '',
+    },
+
+    weight: {
+      type: Number,
+      default: 0,
+    },
+
+    discount: {
+      type: Number,
+      default: 0,
     },
   },
   {
@@ -140,6 +159,17 @@ const productSchema = mongoose.Schema(
 
     category: {
       type: String,
+    },
+
+    keywords: [
+      {
+        type: String,
+      },
+    ],
+
+    brand: {
+      type: String,
+      default: '',
     },
 
     stock: {

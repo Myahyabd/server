@@ -32,13 +32,15 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     step = 'calculations';
     const calculateOrderProfit = (order) => {
       const landedCost = order.landedCostTotal || 0;
+      const packaging = order.giftDetails?.packagingCost || 0;
+      const other = order.giftDetails?.otherExpense || 0;
+      const delivery = order.deliveryCharge || 0;
+      const modCommission = order.isModeratorOrder ? (order.moderatorProfitTotal || 0) : 0;
+
       if (order.isGift) {
-        const packaging = order.giftDetails?.packagingCost || 0;
-        const other = order.giftDetails?.otherExpense || 0;
-        const del = order.deliveryCharge || 0;
-        return 0 - landedCost - packaging - other - del;
+        return 0 - landedCost - packaging - other - delivery;
       } else {
-        return (order.totalPrice || 0) - landedCost - (order.deliveryCharge || 0);
+        return (order.totalPrice || 0) - delivery - landedCost - packaging - other - modCommission;
       }
     };
 

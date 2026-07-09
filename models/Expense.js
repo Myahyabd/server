@@ -18,7 +18,24 @@ const expenseSchema = mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: ['Food', 'Stay', 'Travel', 'Product Purchase', 'Carriage', 'Salary', 'Other'],
+    },
+    date: {
+      type: Date,
+      default: Date.now,
+    },
+    description: {
+      type: String,
+      default: '',
+    },
+    relatedProduct: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+    },
+    giftTitle: {
+      type: String,
+    },
+    giftType: {
+      type: String,
     },
     amount: {
       type: Number,
@@ -35,6 +52,9 @@ const expenseSchema = mongoose.Schema(
     notes: {
       type: String,
       default: '',
+    },
+    selectedVariant: {
+      type: String,
     },
     productCost: { type: Number, default: 0 },
     courierCost: { type: Number, default: 0 },

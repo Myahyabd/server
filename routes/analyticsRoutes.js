@@ -314,6 +314,20 @@ router.get('/summary', protect, adminOnly, async (req, res) => {
       Returned: 0
     };
 
+    const calculateOrderProfit = (order) => {
+      const landedCost = order.landedCostTotal || 0;
+      const packaging = order.giftDetails?.packagingCost || 0;
+      const other = order.giftDetails?.otherExpense || 0;
+      const delivery = order.deliveryCharge || 0;
+      const modCommission = order.isModeratorOrder ? (order.moderatorProfitTotal || 0) : 0;
+
+      if (order.isGift) {
+        return 0 - landedCost - packaging - other - delivery;
+      } else {
+        return (order.totalPrice || 0) - delivery - landedCost - packaging - other - modCommission;
+      }
+    };
+
     let rangeRevenue = 0;
     let rangeProfit = 0;
 
@@ -323,7 +337,7 @@ router.get('/summary', protect, adminOnly, async (req, res) => {
       }
       if (['Processing', 'Shipped', 'Delivered'].includes(o.status)) {
         rangeRevenue += o.totalPrice || 0;
-        rangeProfit += o.moderatorProfitTotal || 0;
+        rangeProfit += calculateOrderProfit(o);
       }
     });
 

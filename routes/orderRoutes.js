@@ -80,6 +80,290 @@ const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
 };
 
 // ===================================
+// GUEST CHECKOUT: PLACE ORDER INSTANTLY (No OTP)
+// ===================================
+router.post('/guest/place-order', async (req, res) => {
+  try {
+    const {
+      fullName,
+      email,
+      orderItems,
+      shippingAddress,
+      paymentMethod,
+      paymentDetails,
+      couponCode,
+      referralCode,
+      isGift,
+      giftDetails
+    } = req.body;
+
+    const phone = shippingAddress?.phone;
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    // Find or create customer
+    let user = await User.findOne({ phone });
+    if (!user) {
+      user = new User({
+        name: fullName,
+        phone,
+        email: email || undefined,
+        password: Math.random().toString(36).slice(-8), // temporary placeholder password
+        role: 'customer',
+        isVerified: true,
+      });
+      await user.save();
+    } else {
+      user.name = fullName;
+      if (email) {
+        user.email = email;
+      }
+      await user.save();
+    }
+
+    if (!orderItems || orderItems.length === 0) {
+      return res.status(400).json({ message: 'No order items' });
+    }
+
+    // Fetch system settings
+    let settings = await SystemSettings.findOne();
+    if (!settings) {
+      settings = {
+        deliverySettings: { type: 'Fixed', fixedCharge: 80, freeDeliveryEnabled: false },
+        codSettings: { enabled: true, chargeType: 'Percentage', value: 1 },
+        referralSettings: { enabled: true, discountType: 'Percentage', value: 5 }
+      };
+    }
+
+    // Validate stock and fetch buying/landed cost
+    let calculatedOrderItems = [];
+    let subtotal = 0;
+    let landedCostTotal = 0;
+
+    for (const item of orderItems) {
+      const product = await Product.findById(item.product);
+      if (!product) {
+        return res.status(404).json({ message: `Product ${item.name} not found` });
+      }
+
+      let costPrice = 0;
+      let sellPrice = item.price;
+
+      if (item.variant) {
+        const variant = product.variants.find(v => v.name === item.variant);
+        if (!variant) {
+          return res.status(400).json({ message: `Variant ${item.variant} not found for ${product.name}` });
+        }
+        if (variant.stock < item.qty) {
+          return res.status(400).json({ message: `${product.name} (${variant.name}) is out of stock` });
+        }
+        
+        costPrice = variant.landedCost || variant.buyingPrice || 0;
+        variant.stock -= item.qty;
+      } else {
+        if (product.stock < item.qty) {
+          return res.status(400).json({ message: `${product.name} is out of stock` });
+        }
+        
+        costPrice = product.landedCost || product.buyingPrice || 0;
+        product.stock -= item.qty;
+      }
+
+      product.markModified('variants');
+      await product.save();
+
+      subtotal += sellPrice * item.qty;
+      landedCostTotal += costPrice * item.qty;
+
+      let modPrice = 0;
+      if (item.variant) {
+        const variant = product.variants.find(v => v.name === item.variant);
+        modPrice = variant ? (variant.moderatorPrice || 0) : 0;
+      } else {
+        modPrice = product.moderatorPrice || 0;
+      }
+
+      calculatedOrderItems.push({
+        product: item.product,
+        name: product.name,
+        image: item.image || (product.images && product.images[0]) || '',
+        price: isGift ? 0 : sellPrice,
+        buyingCost: costPrice,
+        qty: item.qty,
+        variant: item.variant || '',
+        moderatorPrice: modPrice,
+        sellingPrice: sellPrice,
+        profitMargin: sellPrice - modPrice
+      });
+    }
+
+    // Calculate Discounts (Only one of referralCode or couponCode can be applied)
+    let couponDiscount = 0;
+    let couponId = null;
+    let referralDiscount = 0;
+    let refUsedCode = '';
+    let referralCommission = 0;
+    let referralOwnerId = null;
+
+    if (referralCode && !isGift) {
+      const moderator = await User.findOne({
+        referralCode: referralCode.toUpperCase(),
+        role: { $in: ['admin', 'moderator'] }
+      });
+      const refConfig = settings.referralSettings;
+      if (moderator && refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+        refUsedCode = moderator.referralCode;
+        referralOwnerId = moderator._id;
+        if (refConfig.discountType === 'Percentage') {
+          referralDiscount = (refConfig.value / 100) * subtotal;
+          if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
+            referralDiscount = refConfig.maxDiscount;
+          }
+        } else {
+          referralDiscount = refConfig.value;
+        }
+
+        // Calculate Commission
+        if (refConfig.commissionType === 'Percentage') {
+          referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
+        } else {
+          referralCommission = refConfig.commissionValue || 50;
+        }
+      }
+    } else if (couponCode && !isGift) {
+      const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), status: 'Active' });
+      if (coupon) {
+        const isNotExpired = !coupon.expiryDate || new Date() < coupon.expiryDate;
+        const isUnderLimit = coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit;
+        const isAboveMin = subtotal >= coupon.minOrder;
+
+        if (isNotExpired && isUnderLimit && isAboveMin) {
+          couponId = coupon._id;
+          if (coupon.discountType === 'Percentage') {
+            couponDiscount = (coupon.value / 100) * subtotal;
+            if (coupon.maxDiscount !== null && couponDiscount > coupon.maxDiscount) {
+              couponDiscount = coupon.maxDiscount;
+            }
+          } else {
+            couponDiscount = coupon.value;
+          }
+          coupon.usedCount += 1;
+          await coupon.save();
+        }
+      }
+    }
+
+    // Calculate Delivery Charge
+    let deliveryCharge = 0;
+    const delConfig = settings.deliverySettings;
+    if (!isGift) {
+      let isFreeDelivery = false;
+      if (delConfig && delConfig.freeDeliveryEnabled && subtotal >= delConfig.freeDeliveryMinAmount) {
+        isFreeDelivery = true;
+      }
+
+      if (!isFreeDelivery) {
+        if (delConfig.type === 'District' && shippingAddress.district) {
+          const match = delConfig.districtCharges.find(
+            d => d.district.toLowerCase() === shippingAddress.district.toLowerCase()
+          );
+          deliveryCharge = match ? match.charge : delConfig.fixedCharge;
+        } else if (delConfig.type === 'Courier' && shippingAddress.courier) {
+          const match = delConfig.courierCharges.find(
+            c => c.courier.toLowerCase() === shippingAddress.courier.toLowerCase()
+          );
+          deliveryCharge = match ? match.charge : delConfig.fixedCharge;
+        } else {
+          deliveryCharge = delConfig.fixedCharge || 80;
+        }
+      }
+    }
+
+    // Calculate COD Charge
+    let codCharge = 0;
+    const codConfig = settings.codSettings;
+    if (paymentMethod === 'Cash On Delivery' && codConfig && codConfig.enabled && !isGift) {
+      const activeSubtotal = subtotal - couponDiscount - referralDiscount;
+      if (codConfig.chargeType === 'Percentage') {
+        codCharge = Math.round((codConfig.value / 100) * activeSubtotal);
+      } else {
+        codCharge = codConfig.value;
+      }
+    }
+
+    const finalSubtotal = isGift ? 0 : (subtotal - couponDiscount - referralDiscount);
+    const totalPrice = finalSubtotal + deliveryCharge + codCharge;
+
+    const order = new Order({
+      user: user._id,
+      orderItems: calculatedOrderItems,
+      shippingAddress,
+      paymentMethod,
+      paymentDetails: {
+        senderMobile: paymentDetails?.senderMobile || '',
+        transactionId: paymentDetails?.transactionId || '',
+        screenshot: paymentDetails?.screenshot || ''
+      },
+      paymentStatus: 'Unpaid',
+      totalPrice,
+      deliveryCharge,
+      codCharge,
+      discount: couponDiscount + referralDiscount,
+      couponApplied: couponId,
+      couponDiscount,
+      referralUsed: refUsedCode,
+      referralDiscount,
+      referralCommission,
+      referralCommissionStatus: 'Pending',
+      referralOwner: referralOwnerId,
+      landedCostTotal,
+      isGift: !!isGift,
+      giftDetails: isGift ? {
+        receiverName: giftDetails?.receiverName || shippingAddress.fullName,
+        phone: giftDetails?.phone || shippingAddress.phone,
+        address: giftDetails?.address || shippingAddress.address,
+        reason: giftDetails?.reason || '',
+        packagingCost: Number(giftDetails?.packagingCost || 0),
+        otherExpense: Number(giftDetails?.otherExpense || 0)
+      } : undefined,
+      status: 'Pending',
+      isDelivered: false,
+      createdBy: user._id,
+      salesChannel: 'Online'
+    });
+
+    const createdOrder = await order.save();
+
+    // Analytics Tracking Integration
+    try {
+      const CartLog = require('../models/CartLog');
+      const ActionLog = require('../models/ActionLog');
+
+      await CartLog.findOneAndUpdate(
+        { sessionToken: req.body.sessionToken || 'N/A' },
+        { isAbandoned: false }
+      );
+
+      for (const item of createdOrder.orderItems) {
+        await ActionLog.create({
+          type: 'order_place',
+          product: item.product,
+          user: user._id,
+          sessionToken: req.body.sessionToken || 'direct_order_session'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update analytics logs on guest order creation:', err);
+    }
+
+    res.status(201).json(createdOrder);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ===================================
 // CREATE ORDER (Online or POS/Offline)
 // ===================================
 router.post('/', protect, async (req, res) => {
@@ -88,6 +372,7 @@ router.post('/', protect, async (req, res) => {
       orderItems,
       shippingAddress,
       paymentMethod,
+      paymentDetails,
       couponCode,
       referralCode,
       isGift,
@@ -202,36 +487,14 @@ router.post('/', protect, async (req, res) => {
       });
     }
 
-    // Calculate Discounts
+    // Calculate Discounts (Only one of referralCode or couponCode can be applied)
     let couponDiscount = 0;
     let couponId = null;
-    if (couponCode && !isGift) {
-      const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), status: 'Active' });
-      if (coupon) {
-        const isNotExpired = !coupon.expiryDate || new Date() < coupon.expiryDate;
-        const isUnderLimit = coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit;
-        const isAboveMin = subtotal >= coupon.minOrder;
-
-        if (isNotExpired && isUnderLimit && isAboveMin) {
-          couponId = coupon._id;
-          if (coupon.discountType === 'Percentage') {
-            couponDiscount = (coupon.value / 100) * subtotal;
-            if (coupon.maxDiscount !== null && couponDiscount > coupon.maxDiscount) {
-              couponDiscount = coupon.maxDiscount;
-            }
-          } else {
-            couponDiscount = coupon.value;
-          }
-          coupon.usedCount += 1;
-          await coupon.save();
-        }
-      }
-    }
-
     let referralDiscount = 0;
     let refUsedCode = '';
     let referralCommission = 0;
     let referralOwnerId = null;
+
     if (referralCode && !isGift) {
       const moderator = await User.findOne({
         referralCode: referralCode.toUpperCase(),
@@ -255,6 +518,27 @@ router.post('/', protect, async (req, res) => {
           referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
         } else {
           referralCommission = refConfig.commissionValue || 50;
+        }
+      }
+    } else if (couponCode && !isGift) {
+      const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), status: 'Active' });
+      if (coupon) {
+        const isNotExpired = !coupon.expiryDate || new Date() < coupon.expiryDate;
+        const isUnderLimit = coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit;
+        const isAboveMin = subtotal >= coupon.minOrder;
+
+        if (isNotExpired && isUnderLimit && isAboveMin) {
+          couponId = coupon._id;
+          if (coupon.discountType === 'Percentage') {
+            couponDiscount = (coupon.value / 100) * subtotal;
+            if (coupon.maxDiscount !== null && couponDiscount > coupon.maxDiscount) {
+              couponDiscount = coupon.maxDiscount;
+            }
+          } else {
+            couponDiscount = coupon.value;
+          }
+          coupon.usedCount += 1;
+          await coupon.save();
         }
       }
     }
@@ -315,6 +599,11 @@ router.post('/', protect, async (req, res) => {
       orderItems: calculatedOrderItems,
       shippingAddress,
       paymentMethod,
+      paymentDetails: {
+        senderMobile: paymentDetails?.senderMobile || '',
+        transactionId: paymentDetails?.transactionId || '',
+        screenshot: paymentDetails?.screenshot || ''
+      },
       paymentStatus: isOffline ? 'Paid' : 'Unpaid',
       totalPrice,
       deliveryCharge,

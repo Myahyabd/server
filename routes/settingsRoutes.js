@@ -6,7 +6,7 @@ const protect = require('../middleware/authMiddleware');
 const { adminOnly } = require('../middleware/roleMiddleware');
 
 // GET SYSTEM SETTINGS (Public/Authed)
-router.get('/', protect, async (req, res) => {
+router.get('/', protect.optionalProtect || protect, async (req, res) => {
   try {
     let settings = await SystemSettings.findOne();
     if (!settings) {
