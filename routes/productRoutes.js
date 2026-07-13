@@ -299,7 +299,7 @@ router.get(
       // CATEGORY FILTER
       const categoryFilter = req.query.category
         ? {
-            category: req.query.category,
+            category: { $regex: new RegExp('^' + req.query.category.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') }
           }
         : {};
 
