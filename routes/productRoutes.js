@@ -173,13 +173,15 @@ router.get(
 
   async (req, res) => {
     try {
+      const Order = require('../models/Order');
       const rawCategories = await Product.distinct('category');
       
       // Split by comma, trim, filter unique
       const categoriesSet = new Set();
       rawCategories.forEach(cat => {
-        if (cat) {
-          cat.split(',').forEach(c => {
+        if (cat !== null && cat !== undefined) {
+          const catStr = String(cat);
+          catStr.split(',').forEach(c => {
             const trimmed = c.trim();
             if (trimmed) categoriesSet.add(trimmed);
           });
@@ -194,8 +196,8 @@ router.get(
       const products = await Product.find({}).select('category');
       const productCategoryMap = {};
       products.forEach(p => {
-        if (p.category) {
-          productCategoryMap[p._id.toString()] = p.category;
+        if (p.category !== null && p.category !== undefined) {
+          productCategoryMap[p._id.toString()] = String(p.category);
         }
       });
 
