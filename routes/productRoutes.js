@@ -173,8 +173,19 @@ router.get(
 
   async (req, res) => {
     try {
-      const Order = require('../models/Order');
-      const categories = await Product.distinct('category');
+      const rawCategories = await Product.distinct('category');
+      
+      // Split by comma, trim, filter unique
+      const categoriesSet = new Set();
+      rawCategories.forEach(cat => {
+        if (cat) {
+          cat.split(',').forEach(c => {
+            const trimmed = c.trim();
+            if (trimmed) categoriesSet.add(trimmed);
+          });
+        }
+      });
+      const categories = Array.from(categoriesSet);
 
       // Get non-cancelled orders to aggregate sales volume
       const orders = await Order.find({ status: { $ne: 'Cancelled' } }).select('orderItems');
@@ -197,9 +208,14 @@ router.get(
       orders.forEach(order => {
         if (order.orderItems) {
           order.orderItems.forEach(item => {
-            const cat = productCategoryMap[item.product?.toString()];
-            if (cat && salesCounts[cat] !== undefined) {
-              salesCounts[cat] += (item.qty || 0);
+            const catStr = productCategoryMap[item.product?.toString()];
+            if (catStr) {
+              catStr.split(',').forEach(c => {
+                const cat = c.trim();
+                if (cat && salesCounts[cat] !== undefined) {
+                  salesCounts[cat] += (item.qty || 0);
+                }
+              });
             }
           });
         }
@@ -299,7 +315,7 @@ router.get(
       // CATEGORY FILTER
       const categoryFilter = req.query.category
         ? {
-            category: { $regex: new RegExp('^' + req.query.category.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') }
+            category: { $regex: new RegExp('(^|,\\s*)' + req.query.category.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '(\\s*,|$)', 'i') }
           }
         : {};
 
