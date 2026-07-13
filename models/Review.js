@@ -24,8 +24,12 @@ const reviewSchema = new mongoose.Schema(
     },
     reviewerRole: {
       type: String,
-      enum: ['customer', 'moderator', 'admin', 'vip', 'wholesale'],
+      enum: ['customer', 'moderator', 'admin', 'vip', 'wholesale', 'facebook', 'whatsapp'],
       default: 'customer'
+    },
+    reviewerProfilePhoto: {
+      type: String,
+      default: ''
     },
     rating: {
       type: Number,

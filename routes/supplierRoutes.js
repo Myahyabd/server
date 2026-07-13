@@ -184,4 +184,383 @@ router.post('/purchase', protect, adminOnly, async (req, res) => {
   }
 });
 
+const PurchaseInvoice = require('../models/PurchaseInvoice');
+const Expense = require('../models/Expense');
+
+// GET ALL PURCHASE INVOICES
+router.get('/invoices/all', protect, adminOnly, async (req, res) => {
+  try {
+    const invoices = await PurchaseInvoice.find()
+      .populate('supplier', 'name phone')
+      .populate('items.product', 'name')
+      .sort({ createdAt: -1 });
+    res.json(invoices);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// CREATE PURCHASE INVOICE (Combined purchase of multiple items)
+router.post('/purchase-invoice', protect, adminOnly, async (req, res) => {
+  try {
+    const {
+      supplierName,
+      supplierPhone,
+      deliveryCost,
+      discount,
+      notes,
+      items // Array of: { product, variantName, quantity, unitPrice, notes }
+    } = req.body;
+
+    if (!supplierPhone || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Missing required supplier or items fields' });
+    }
+
+    // 1. Find or create supplier
+    let supplier = await Supplier.findOne({ phone: supplierPhone });
+    if (!supplier) {
+      supplier = await Supplier.create({
+        name: supplierName || 'Unnamed Supplier',
+        phone: supplierPhone,
+      });
+    } else if (supplierName && supplier.name === 'Unnamed Supplier') {
+      supplier.name = supplierName;
+      await supplier.save();
+    }
+
+    // 2. Parse items and compute base subtotal
+    let subTotal = 0;
+    const itemsData = [];
+
+    for (const item of items) {
+      const qty = Number(item.quantity);
+      const unit = Number(item.unitPrice);
+      const baseTotal = qty * unit;
+      subTotal += baseTotal;
+
+      itemsData.push({
+        product: item.product,
+        variantName: item.variantName || '',
+        quantity: qty,
+        purchasePrice: baseTotal, // Base price total for this item
+        unitPrice: unit,
+        notes: item.notes || ''
+      });
+    }
+
+    const deliveryVal = Number(deliveryCost || 0);
+    const discountVal = Number(discount || 0);
+    const totalAmount = subTotal + deliveryVal - discountVal;
+
+    // 3. Proportional allocation for Landed Cost
+    for (const item of itemsData) {
+      const ratio = subTotal > 0 ? (item.purchasePrice / subTotal) : 0;
+      item.proportionalDelivery = deliveryVal * ratio;
+      item.proportionalDiscount = discountVal * ratio;
+      item.totalCost = item.purchasePrice + item.proportionalDelivery - item.proportionalDiscount;
+      item.landedCost = item.totalCost / item.quantity;
+    }
+
+    // 4. Generate unique invoice number
+    const invoiceNumber = `INV-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // 5. Create Expense Record
+    const expense = await Expense.create({
+      user: req.user.id,
+      userName: req.user.name,
+      title: `📦 Purchase Invoice (${invoiceNumber}) - ${supplier.name}`,
+      category: 'Product Purchase',
+      amount: totalAmount,
+      date: new Date(),
+      notes: `Subtotal: ৳${subTotal}, Delivery: ৳${deliveryVal}, Discount: ৳${discountVal}. Notes: ${notes || ''}`
+    });
+
+    // 6. Create PurchaseInvoice
+    const invoice = await PurchaseInvoice.create({
+      invoiceNumber,
+      supplier: supplier._id,
+      items: itemsData,
+      deliveryCost: deliveryVal,
+      discount: discountVal,
+      subTotal,
+      totalAmount,
+      notes: notes || '',
+      purchasedBy: req.user.id,
+      expenseId: expense._id
+    });
+
+    // 7. Update product stock & landed cost, and create Purchase records
+    for (const item of itemsData) {
+      const product = await Product.findById(item.product);
+      if (!product) continue;
+
+      const qty = item.quantity;
+      const purchaseLandedCost = item.landedCost;
+      const basePrice = item.purchasePrice;
+
+      if (item.variantName) {
+        const variantIndex = product.variants.findIndex(v => v.name === item.variantName);
+        if (variantIndex !== -1) {
+          const variant = product.variants[variantIndex];
+          const currentStock = variant.stock || 0;
+          const currentLanded = variant.landedCost || 0;
+          const newStock = currentStock + qty;
+          const newLandedCost = newStock > 0 
+            ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+            : purchaseLandedCost;
+          
+          variant.stock = newStock;
+          variant.buyingPrice = basePrice / qty;
+          variant.landedCost = newLandedCost;
+        }
+      } else {
+        const currentStock = product.stock || 0;
+        const currentLanded = product.landedCost || 0;
+        const newStock = currentStock + qty;
+        const newLandedCost = newStock > 0
+          ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+          : purchaseLandedCost;
+        
+        product.stock = newStock;
+        product.buyingPrice = basePrice / qty;
+        product.landedCost = newLandedCost;
+      }
+      product.markModified('variants');
+      await product.save();
+
+      // Create separate Purchase record so it shows up in standard reports
+      await Purchase.create({
+        product: item.product,
+        variantName: item.variantName || '',
+        supplier: supplier._id,
+        quantity: qty,
+        purchasePrice: basePrice,
+        deliveryCost: item.proportionalDelivery,
+        transportCost: 0,
+        otherExpense: 0,
+        totalCost: item.totalCost,
+        landedCost: item.landedCost,
+        notes: `Part of Invoice ${invoiceNumber}. ${item.notes || ''}`,
+        purchasedBy: req.user.id
+      });
+    }
+
+    // 8. Update Supplier metrics
+    supplier.purchaseCount += 1;
+    supplier.lastPurchaseDate = new Date();
+    await supplier.save();
+
+    res.status(201).json({
+      message: 'Purchase invoice recorded successfully',
+      invoice,
+      expense
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// UPDATE PURCHASE INVOICE
+router.put('/invoices/:id', protect, adminOnly, async (req, res) => {
+  try {
+    const invoice = await PurchaseInvoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    const {
+      supplierPhone,
+      deliveryCost,
+      discount,
+      notes,
+      items // Array of: { product, variantName, quantity, unitPrice, notes }
+    } = req.body;
+
+    if (!supplierPhone || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Missing required supplier or items fields' });
+    }
+
+    // 1. Revert OLD stock changes
+    for (const item of invoice.items) {
+      const product = await Product.findById(item.product);
+      if (product) {
+        if (item.variantName) {
+          const variantIndex = product.variants.findIndex(v => v.name === item.variantName);
+          if (variantIndex !== -1) {
+            const variant = product.variants[variantIndex];
+            variant.stock = Math.max(0, (variant.stock || 0) - item.quantity);
+          }
+        } else {
+          product.stock = Math.max(0, (product.stock || 0) - item.quantity);
+        }
+        product.markModified('variants');
+        await product.save();
+      }
+    }
+
+    // 2. Delete OLD associated Purchase records
+    await Purchase.deleteMany({ notes: new RegExp(`Part of Invoice ${invoice.invoiceNumber}`) });
+
+    // 3. Find/Update Supplier
+    let supplier = await Supplier.findOne({ phone: supplierPhone });
+    if (!supplier) {
+      supplier = await Supplier.create({
+        name: req.body.supplierName || 'Unnamed Supplier',
+        phone: supplierPhone,
+      });
+    }
+
+    // 4. Parse NEW items and compute base subtotal
+    let subTotal = 0;
+    const itemsData = [];
+
+    for (const item of items) {
+      const qty = Number(item.quantity);
+      const unit = Number(item.unitPrice);
+      const baseTotal = qty * unit;
+      subTotal += baseTotal;
+
+      itemsData.push({
+        product: item.product,
+        variantName: item.variantName || '',
+        quantity: qty,
+        purchasePrice: baseTotal,
+        unitPrice: unit,
+        notes: item.notes || ''
+      });
+    }
+
+    const deliveryVal = Number(deliveryCost || 0);
+    const discountVal = Number(discount || 0);
+    const totalAmount = subTotal + deliveryVal - discountVal;
+
+    // 5. Proportional allocation for Landed Cost
+    for (const item of itemsData) {
+      const ratio = subTotal > 0 ? (item.purchasePrice / subTotal) : 0;
+      item.proportionalDelivery = deliveryVal * ratio;
+      item.proportionalDiscount = discountVal * ratio;
+      item.totalCost = item.purchasePrice + item.proportionalDelivery - item.proportionalDiscount;
+      item.landedCost = item.totalCost / item.quantity;
+    }
+
+    // 6. Update associated Expense Record
+    if (invoice.expenseId) {
+      await Expense.findByIdAndUpdate(invoice.expenseId, {
+        amount: totalAmount,
+        title: `📦 Purchase Invoice (${invoice.invoiceNumber}) - ${supplier.name}`,
+        notes: `Subtotal: ৳${subTotal}, Delivery: ৳${deliveryVal}, Discount: ৳${discountVal}. Notes: ${notes || ''}`
+      });
+    }
+
+    // 7. Update/save products stock, landed cost and create Purchase records
+    for (const item of itemsData) {
+      const product = await Product.findById(item.product);
+      if (!product) continue;
+
+      const qty = item.quantity;
+      const purchaseLandedCost = item.landedCost;
+      const basePrice = item.purchasePrice;
+
+      if (item.variantName) {
+        const variantIndex = product.variants.findIndex(v => v.name === item.variantName);
+        if (variantIndex !== -1) {
+          const variant = product.variants[variantIndex];
+          const currentStock = variant.stock || 0;
+          const currentLanded = variant.landedCost || 0;
+          const newStock = currentStock + qty;
+          const newLandedCost = newStock > 0 
+            ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+            : purchaseLandedCost;
+          
+          variant.stock = newStock;
+          variant.buyingPrice = basePrice / qty;
+          variant.landedCost = newLandedCost;
+        }
+      } else {
+        const currentStock = product.stock || 0;
+        const currentLanded = product.landedCost || 0;
+        const newStock = currentStock + qty;
+        const newLandedCost = newStock > 0
+          ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+          : purchaseLandedCost;
+        
+        product.stock = newStock;
+        product.buyingPrice = basePrice / qty;
+        product.landedCost = newLandedCost;
+      }
+      product.markModified('variants');
+      await product.save();
+
+      // Create new Purchase record
+      await Purchase.create({
+        product: item.product,
+        variantName: item.variantName || '',
+        supplier: supplier._id,
+        quantity: qty,
+        purchasePrice: basePrice,
+        deliveryCost: item.proportionalDelivery,
+        transportCost: 0,
+        otherExpense: 0,
+        totalCost: item.totalCost,
+        landedCost: item.landedCost,
+        notes: `Part of Invoice ${invoice.invoiceNumber}. ${item.notes || ''}`,
+        purchasedBy: req.user.id
+      });
+    }
+
+    // 8. Update Invoice doc
+    invoice.supplier = supplier._id;
+    invoice.items = itemsData;
+    invoice.deliveryCost = deliveryVal;
+    invoice.discount = discountVal;
+    invoice.subTotal = subTotal;
+    invoice.totalAmount = totalAmount;
+    invoice.notes = notes || '';
+    await invoice.save();
+
+    res.json({ message: 'Purchase invoice updated and inventory updated successfully', invoice });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE PURCHASE INVOICE
+router.delete('/invoices/:id', protect, adminOnly, async (req, res) => {
+  try {
+    const invoice = await PurchaseInvoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    // 1. Delete associated Expense
+    if (invoice.expenseId) {
+      await Expense.findByIdAndDelete(invoice.expenseId);
+    }
+
+    // 2. Delete associated Purchase records
+    await Purchase.deleteMany({ notes: new RegExp(`Part of Invoice ${invoice.invoiceNumber}`) });
+
+    // 3. Revert stock changes on products
+    for (const item of invoice.items) {
+      const product = await Product.findById(item.product);
+      if (product) {
+        if (item.variantName) {
+          const variantIndex = product.variants.findIndex(v => v.name === item.variantName);
+          if (variantIndex !== -1) {
+            const variant = product.variants[variantIndex];
+            variant.stock = Math.max(0, (variant.stock || 0) - item.quantity);
+          }
+        } else {
+          product.stock = Math.max(0, (product.stock || 0) - item.quantity);
+        }
+        product.markModified('variants');
+        await product.save();
+      }
+    }
+
+    // 4. Delete the invoice itself
+    await PurchaseInvoice.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Purchase invoice deleted and inventory reverted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

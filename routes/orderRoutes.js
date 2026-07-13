@@ -9,6 +9,7 @@ const SystemSettings = require('../models/SystemSettings');
 const protect = require('../middleware/authMiddleware');
 const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
 const WalletTransaction = require('../models/WalletTransaction');
+const { sendNewOrderAlert } = require('../utils/sendEmail');
 
 // HELPER: Stock transition manager on status change
 const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
@@ -357,6 +358,9 @@ router.post('/guest/place-order', async (req, res) => {
       console.error('Failed to update analytics logs on guest order creation:', err);
     }
 
+    // Send email alert to admin asynchronously
+    sendNewOrderAlert(createdOrder);
+
     res.status(201).json(createdOrder);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -688,6 +692,9 @@ router.post('/', protect, async (req, res) => {
         await owner.save();
       }
     }
+
+    // Send email alert to admin asynchronously
+    sendNewOrderAlert(createdOrder);
 
     res.status(201).json(createdOrder);
   } catch (error) {

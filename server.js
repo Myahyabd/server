@@ -29,6 +29,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const referralRoutes = require('./routes/referralRoutes');
 const moderatorRoutes = require('./routes/moderatorRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const mediaRoutes = require('./routes/mediaRoutes');
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/referrals', referralRoutes);
 
 app.use('/api/moderator', moderatorRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/media', mediaRoutes);
 
 // MONGODB
 mongoose

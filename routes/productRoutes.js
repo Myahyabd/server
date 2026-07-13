@@ -113,9 +113,19 @@ router.get(
       const query = req.query.q || '';
       if (!query.trim()) {
         const popular = await Product.find({
-          $or: [
-            { hasVariants: false, stock: { $gt: 0 } },
-            { hasVariants: true, 'variants.stock': { $gt: 0 } }
+          $and: [
+            {
+              $or: [
+                { hasVariants: false, stock: { $gt: 0 } },
+                { hasVariants: true, 'variants.stock': { $gt: 0 } }
+              ]
+            },
+            {
+              $or: [
+                { price: { $gt: 0 } },
+                { salePrice: { $gt: 0 } }
+              ]
+            }
           ]
         }).sort({ rating: -1, numReviews: -1 }).limit(6);
         return res.json(popular);
@@ -135,6 +145,12 @@ router.get(
             $or: [
               { hasVariants: false, stock: { $gt: 0 } },
               { hasVariants: true, 'variants.stock': { $gt: 0 } }
+            ]
+          },
+          {
+            $or: [
+              { price: { $gt: 0 } },
+              { salePrice: { $gt: 0 } }
             ]
           }
         ]
@@ -220,6 +236,15 @@ router.get(
       }
 
       const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
+      const isAdminPanel = req.query.adminPanel === 'true' && isStaff;
+
+      // If not fetched in admin panel context and product has no valid price, return 404
+      if (!isAdminPanel && (product.price <= 0 && (!product.salePrice || product.salePrice <= 0))) {
+        return res.status(404).json({
+          message: 'Product not found',
+        });
+      }
+
       const productObj = product.toObject();
 
       if (!isStaff) {
@@ -298,12 +323,23 @@ router.get(
       }
 
       const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
-      const stockFilter = isStaff
+      const isAdminPanel = req.query.adminPanel === 'true' && isStaff;
+
+      const stockFilter = isAdminPanel
         ? {}
         : {
             $or: [
               { hasVariants: false, stock: { $gt: 0 } },
               { hasVariants: true, 'variants.stock': { $gt: 0 } }
+            ]
+          };
+
+      const priceValidationFilter = isAdminPanel
+        ? {}
+        : {
+            $or: [
+              { price: { $gt: 0 } },
+              { salePrice: { $gt: 0 } }
             ]
           };
 
@@ -318,6 +354,7 @@ router.get(
         ...categoryFilter,
         ...priceFilter,
         ...stockFilter,
+        ...priceValidationFilter,
       });
 
       // PRODUCTS
@@ -326,6 +363,7 @@ router.get(
         ...categoryFilter,
         ...priceFilter,
         ...stockFilter,
+        ...priceValidationFilter,
       });
 
       if (!nopage) {
@@ -446,5 +484,88 @@ router.put(
     }
   },
 );
+
+// ==============================
+// GET DYNAMIC SITEMAP.XML
+// ==============================
+router.get('/sitemap/xml', async (req, res) => {
+  try {
+    // Fetch all products that have a valid price (are not draft/hidden)
+    const products = await Product.find({
+      $or: [
+        { price: { $gt: 0 } },
+        { salePrice: { $gt: 0 } }
+      ]
+    }).select('_id updatedAt');
+
+    const categories = await Product.distinct('category', {
+      $or: [
+        { price: { $gt: 0 } },
+        { salePrice: { $gt: 0 } }
+      ]
+    });
+
+    const domain = 'https://nushaat.com'; // Default domain
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+    // Static main urls
+    const staticPages = [
+      { path: '/', priority: '1.0', changefreq: 'daily' },
+      { path: '/shop', priority: '0.9', changefreq: 'daily' },
+      { path: '/cart', priority: '0.7', changefreq: 'monthly' }
+    ];
+
+    staticPages.forEach(p => {
+      xml += `  <url>\n`;
+      xml += `    <loc>${domain}${p.path}</loc>\n`;
+      xml += `    <changefreq>${p.changefreq}</changefreq>\n`;
+      xml += `    <priority>${p.priority}</priority>\n`;
+      xml += `  </url>\n`;
+    });
+
+    // Category pages
+    categories.forEach(cat => {
+      xml += `  <url>\n`;
+      xml += `    <loc>${domain}/shop?category=${encodeURIComponent(cat)}</loc>\n`;
+      xml += `    <changefreq>weekly</changefreq>\n`;
+      xml += `    <priority>0.8</priority>\n`;
+      xml += `  </url>\n`;
+    });
+
+    // Product detail pages
+    products.forEach(p => {
+      xml += `  <url>\n`;
+      xml += `    <loc>${domain}/product/${p._id}</loc>\n`;
+      xml += `    <lastmod>${new Date(p.updatedAt).toISOString().split('T')[0]}</lastmod>\n`;
+      xml += `    <changefreq>weekly</changefreq>\n`;
+      xml += `    <priority>0.7</priority>\n`;
+      xml += `  </url>\n`;
+    });
+
+    xml += `</urlset>`;
+
+    res.header('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ==============================
+// GET ROBOTS.TXT
+// ==============================
+router.get('/robots/txt', async (req, res) => {
+  const domain = 'https://nushaat.com';
+  let robots = `User-agent: *\n`;
+  robots += `Allow: /\n`;
+  robots += `Disallow: /admin/\n`;
+  robots += `Disallow: /moderator/\n`;
+  robots += `Sitemap: ${domain}/api/products/sitemap/xml\n`;
+
+  res.header('Content-Type', 'text/plain');
+  res.send(robots);
+});
 
 module.exports = router;

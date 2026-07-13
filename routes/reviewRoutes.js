@@ -128,20 +128,27 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ message: 'Rating and Comment detailed reviews are required.' });
     }
 
-    // Default status to 'Pending' for moderating reviews, except if admin posts one
-    const status = req.user.role === 'admin' ? 'Approved' : 'Pending';
+    const isStaff = req.user.role === 'admin' || req.user.role === 'moderator';
+    const status = isStaff ? 'Approved' : 'Pending';
 
     const reviewData = {
       type: type || 'Product',
-      user: req.user.id,
-      reviewerName: req.user.name,
-      reviewerRole: req.user.role || 'customer',
+      reviewerName: (isStaff && req.body.reviewerName) ? req.body.reviewerName : req.user.name,
+      reviewerRole: (isStaff && req.body.reviewerRole) ? req.body.reviewerRole : (req.user.role || 'customer'),
+      reviewerProfilePhoto: (isStaff && req.body.reviewerProfilePhoto) ? req.body.reviewerProfilePhoto : '',
       rating,
       title: title || '',
       comment,
       images: images || [],
-      status
+      status,
+      isFeatured: (isStaff && req.body.isFeatured !== undefined) ? req.body.isFeatured : false
     };
+
+    if (!isStaff) {
+      reviewData.user = req.user.id;
+    } else if (req.body.user) {
+      reviewData.user = req.body.user;
+    }
 
     if (type === 'Product') {
       if (!product) {
