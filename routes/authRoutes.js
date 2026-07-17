@@ -90,7 +90,7 @@ router.post('/verify-otp', async (req, res) => {
 // 3. COMPLETE REGISTRATION (SAVE NAME AND PASSWORD)
 router.post('/register', async (req, res) => {
   try {
-    const { name, phone, password, email } = req.body;
+    const { name, phone, password, email, role } = req.body;
 
     if (!name || !phone || !password) {
       return res.status(400).json({ message: 'All fields are required' });
@@ -125,6 +125,9 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     user.name = name;
     user.password = hashedPassword;
+    if (role === 'moderator') {
+      user.role = 'moderator';
+    }
     await user.save();
 
     try {
