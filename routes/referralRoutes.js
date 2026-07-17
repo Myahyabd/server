@@ -255,7 +255,7 @@ router.put('/admin/withdrawals/:id', protect, adminOnly, async (req, res) => {
 router.get('/admin/wallets', protect, adminOnly, async (req, res) => {
   try {
     const { all } = req.query;
-    let query = { role: { $in: ['admin', 'moderator'] } };
+    let query = { role: { $in: ['admin', 'moderator', 'reseller'] } };
     if (all === 'true') {
       // Find all users who have a referral code or just everyone
       query = {};

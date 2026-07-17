@@ -3,12 +3,12 @@ const express = require('express');
 const router = express.Router();
 
 const User = require('../models/User');
+const Order = require('../models/Order');
 
 const protect = require('../middleware/authMiddleware');
 
 const { adminOnly } = require('../middleware/roleMiddleware');
 
-// GET ALL USERS
 router.get(
   '/',
   protect,
@@ -17,8 +17,38 @@ router.get(
   async (req, res) => {
     try {
       const users = await User.find().select('-password');
+      
+      const resellers = users.filter(u => u.role === 'reseller');
+      const resellerOrderCounts = await Promise.all(resellers.map(async (r) => {
+        const count = await Order.countDocuments({
+          $or: [
+            { moderator: r._id },
+            { referralOwner: r._id }
+          ]
+        });
+        return {
+          userId: r._id.toString(),
+          count
+        };
+      }));
+      
+      resellerOrderCounts.sort((a, b) => b.count - a.count);
+      
+      const usersWithStats = users.map(user => {
+        const userObj = user.toObject();
+        if (userObj.role === 'reseller') {
+          const stat = resellerOrderCounts.find(s => s.userId === userObj._id.toString());
+          const orderCount = stat ? stat.count : 0;
+          const rankIndex = resellerOrderCounts.findIndex(s => s.userId === userObj._id.toString());
+          const rank = rankIndex !== -1 ? rankIndex + 1 : resellerOrderCounts.length;
+          
+          userObj.resellerRank = `#${rank}`;
+          userObj.resellerOrders = orderCount;
+        }
+        return userObj;
+      });
 
-      res.json(users);
+      res.json(usersWithStats);
     } catch (error) {
       res.status(500).json({
         message: error.message,
@@ -149,9 +179,9 @@ router.put('/:id/remove-moderator', protect, adminOnly, async (req, res) => {
       });
     }
 
-    if (user.role !== 'moderator') {
+    if (user.role !== 'moderator' && user.role !== 'reseller') {
       return res.status(400).json({
-        message: 'Only moderators can be changed back to customer',
+        message: 'Only moderators and resellers can be changed back to customer',
       });
     }
 
@@ -346,6 +376,89 @@ router.post('/apply-reseller', protect, async (req, res) => {
         email: user.email,
         address: user.address,
         isModeratorPending: user.isModeratorPending
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET RESELLER DASHBOARD STATS & RANK
+router.get('/reseller/stats', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'reseller' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    const userId = req.user._id.toString();
+    
+    // Calculate rank among all resellers
+    const resellers = await User.find({ role: 'reseller' }).select('_id resellerId name');
+    const resellerOrdersCounts = await Promise.all(resellers.map(async (r) => {
+      const orderCount = await Order.countDocuments({
+        $or: [
+          { moderator: r._id },
+          { referralOwner: r._id }
+        ]
+      });
+      return {
+        userId: r._id.toString(),
+        resellerId: r.resellerId,
+        name: r.name,
+        orderCount
+      };
+    }));
+    
+    // Sort by orderCount descending
+    resellerOrdersCounts.sort((a, b) => b.orderCount - a.orderCount);
+    
+    // Find current user's index
+    const myRankIndex = resellerOrdersCounts.findIndex(r => r.userId === userId);
+    const rank = myRankIndex !== -1 ? myRankIndex + 1 : resellers.length;
+    const totalResellers = resellers.length;
+    
+    // Let's fetch current reseller's order counts by status
+    const totalOrders = await Order.countDocuments({
+      $or: [
+        { moderator: req.user._id },
+        { referralOwner: req.user._id }
+      ]
+    });
+    
+    const pendingOrders = await Order.countDocuments({
+      $or: [
+        { moderator: req.user._id },
+        { referralOwner: req.user._id }
+      ],
+      status: { $in: ['Pending', 'Processing', 'Hold'] }
+    });
+    
+    const deliveredOrders = await Order.countDocuments({
+      $or: [
+        { moderator: req.user._id },
+        { referralOwner: req.user._id }
+      ],
+      status: 'Delivered'
+    });
+    
+    const cancelledOrders = await Order.countDocuments({
+      $or: [
+        { moderator: req.user._id },
+        { referralOwner: req.user._id }
+      ],
+      status: { $in: ['Cancelled', 'Failed', 'Returned'] }
+    });
+    
+    res.json({
+      resellerId: req.user.resellerId || 'N/A',
+      rank: `#${rank}`,
+      totalResellers,
+      orderCount: totalOrders,
+      stats: {
+        totalOrders,
+        pendingOrders,
+        deliveredOrders,
+        cancelledOrders
       }
     });
   } catch (error) {

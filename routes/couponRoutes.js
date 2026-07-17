@@ -70,7 +70,7 @@ router.post('/validate', protect.optionalProtect || protect, async (req, res) =>
     if (!coupon) {
       // Check if it matches a staff referral code
       const staffUser = await User.findOne({ referralCode: code.toUpperCase() });
-      if (staffUser && ['admin', 'moderator'].includes(staffUser.role)) {
+      if (staffUser && ['admin', 'moderator', 'reseller'].includes(staffUser.role)) {
         
         // User cannot use their own referral code
         if (staffUser._id.toString() === req.user.id.toString()) {

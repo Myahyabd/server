@@ -24,13 +24,19 @@ const userSchema = new mongoose.Schema({
 
   role: {
     type: String,
-    enum: ['admin', 'moderator', 'customer'],
+    enum: ['admin', 'moderator', 'reseller', 'customer'],
     default: 'customer',
   },
 
   isModeratorPending: {
     type: Boolean,
     default: false,
+  },
+
+  resellerId: {
+    type: Number,
+    unique: true,
+    sparse: true,
   },
 
   referralCode: {
@@ -165,6 +171,18 @@ userSchema.pre('save', async function (next) {
     
     this.referralCode = code;
   }
+
+  if (this.role === 'reseller' && !this.resellerId) {
+    let idExists = true;
+    let newId;
+    while (idExists) {
+      newId = Math.floor(1000 + Math.random() * 9000); // 4-digit number
+      const duplicate = await mongoose.models.User.findOne({ resellerId: newId });
+      if (!duplicate) idExists = false;
+    }
+    this.resellerId = newId;
+  }
+
   if (typeof next === 'function') next();
 });
 

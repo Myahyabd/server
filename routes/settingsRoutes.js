@@ -75,7 +75,7 @@ router.post('/referral/validate', protect, async (req, res) => {
     // Find moderator with this referral code
     const moderator = await User.findOne({
       referralCode: code.toUpperCase(),
-      role: { $in: ['admin', 'moderator'] },
+      role: { $in: ['admin', 'moderator', 'reseller'] },
     });
 
     if (!moderator) {

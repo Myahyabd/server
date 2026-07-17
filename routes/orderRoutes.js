@@ -224,7 +224,7 @@ router.post('/guest/place-order', async (req, res) => {
     if (referralCode && !isGift) {
       const moderator = await User.findOne({
         referralCode: referralCode.toUpperCase(),
-        role: { $in: ['admin', 'moderator'] }
+        role: { $in: ['admin', 'moderator', 'reseller'] }
       });
       const refConfig = settings.referralSettings;
       if (moderator && refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
@@ -516,7 +516,7 @@ router.post('/', protect, async (req, res) => {
     if (referralCode && !isGift) {
       const moderator = await User.findOne({
         referralCode: referralCode.toUpperCase(),
-        role: { $in: ['admin', 'moderator'] }
+        role: { $in: ['admin', 'moderator', 'reseller'] }
       });
       const refConfig = settings.referralSettings;
       if (moderator && refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
