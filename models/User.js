@@ -28,6 +28,11 @@ const userSchema = new mongoose.Schema({
     default: 'customer',
   },
 
+  isModeratorPending: {
+    type: Boolean,
+    default: false,
+  },
+
   referralCode: {
     type: String,
     unique: true,

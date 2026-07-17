@@ -126,7 +126,8 @@ router.post('/register', async (req, res) => {
     user.name = name;
     user.password = hashedPassword;
     if (role === 'moderator') {
-      user.role = 'moderator';
+      user.role = 'customer';
+      user.isModeratorPending = true;
       user.address = address || '';
     }
     await user.save();

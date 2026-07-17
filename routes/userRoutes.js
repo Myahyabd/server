@@ -100,11 +100,36 @@ router.put('/:id/moderator', protect, adminOnly, async (req, res) => {
     }
 
     user.role = 'moderator';
+    user.isModeratorPending = false;
 
     await user.save();
 
     res.json({
       message: 'User promoted to moderator',
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+});
+
+// REJECT PENDING MODERATOR
+router.put('/:id/reject-moderator', protect, adminOnly, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+      });
+    }
+
+    user.isModeratorPending = false;
+    await user.save();
+
+    res.json({
+      message: 'Reseller request rejected successfully',
     });
   } catch (error) {
     res.status(500).json({
