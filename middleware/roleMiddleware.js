@@ -20,7 +20,18 @@ const adminOrModerator = (req, res, next) => {
   }
 };
 
+const resellerOrStaff = (req, res, next) => {
+  if (req.user && ['admin', 'moderator', 'reseller'].includes(req.user.role)) {
+    next();
+  } else {
+    res.status(403).json({
+      message: 'Access denied',
+    });
+  }
+};
+
 module.exports = {
   adminOnly,
   adminOrModerator,
+  resellerOrStaff,
 };

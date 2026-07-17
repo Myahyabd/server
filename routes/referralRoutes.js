@@ -6,7 +6,7 @@ const SystemSettings = require('../models/SystemSettings');
 const WithdrawalRequest = require('../models/WithdrawalRequest');
 const WalletTransaction = require('../models/WalletTransaction');
 const protect = require('../middleware/authMiddleware');
-const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
+const { adminOnly, adminOrModerator, resellerOrStaff } = require('../middleware/roleMiddleware');
 
 // 1. GET REFERRAL SETTINGS (Public/Staff)
 router.get('/settings', async (req, res) => {
@@ -50,8 +50,8 @@ router.put('/settings', protect, adminOnly, async (req, res) => {
   }
 });
 
-// 3. GET WALLET DETAILS & TRANSACTIONS (Moderator/Admin Only)
-router.get('/wallet', protect, adminOrModerator, async (req, res) => {
+// 3. GET WALLET DETAILS & TRANSACTIONS (Reseller/Moderator/Admin Only)
+router.get('/wallet', protect, resellerOrStaff, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -96,8 +96,8 @@ router.get('/wallet', protect, adminOrModerator, async (req, res) => {
   }
 });
 
-// 3b. GET MY WITHDRAWAL REQUESTS (Moderator/Admin Only)
-router.get('/my-withdrawals', protect, adminOrModerator, async (req, res) => {
+// 3b. GET MY WITHDRAWAL REQUESTS (Reseller/Moderator/Admin Only)
+router.get('/my-withdrawals', protect, resellerOrStaff, async (req, res) => {
   try {
     const requests = await WithdrawalRequest.find({ user: req.user.id }).sort({ createdAt: -1 });
     res.json(requests);
@@ -106,8 +106,8 @@ router.get('/my-withdrawals', protect, adminOrModerator, async (req, res) => {
   }
 });
 
-// 4. REQUEST WITHDRAWAL (Moderator/Admin Only)
-router.post('/withdraw', protect, adminOrModerator, async (req, res) => {
+// 4. REQUEST WITHDRAWAL (Reseller/Moderator/Admin Only)
+router.post('/withdraw', protect, resellerOrStaff, async (req, res) => {
   try {
     const { amount, paymentMethod, accountNumber, accountName, note } = req.body;
 
