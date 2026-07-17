@@ -310,4 +310,47 @@ router.put('/:id/profile', protect, adminOnly, async (req, res) => {
   }
 });
 
+// APPLY TO BE A RESELLER (MODERATOR)
+router.post('/apply-reseller', protect, async (req, res) => {
+  try {
+    const { email, address } = req.body;
+    if (!email || !address) {
+      return res.status(400).json({ message: 'Email and Address are required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.role === 'moderator' || user.role === 'admin') {
+      return res.status(400).json({ message: 'You are already a staff member' });
+    }
+
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail && existingEmail._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ message: 'Email address is already in use' });
+    }
+
+    user.email = email;
+    user.address = address;
+    user.isModeratorPending = true;
+
+    await user.save();
+
+    res.json({
+      message: 'Reseller application submitted successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        address: user.address,
+        isModeratorPending: user.isModeratorPending
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router;
