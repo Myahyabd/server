@@ -25,25 +25,32 @@ const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
       
       let stockBefore = 0;
       if (item.variant) {
-        const variant = product.variants.find(v => v.name === item.variant);
+        const variant = product.variants && product.variants.find(v => v.name === item.variant);
         if (variant) {
-          stockBefore = variant.stock;
-          variant.stock += item.qty;
+          stockBefore = variant.stock || 0;
+          variant.stock = (variant.stock || 0) + (item.qty || 0);
+        } else {
+          stockBefore = product.stock || 0;
+          product.stock = (product.stock || 0) + (item.qty || 0);
         }
       } else {
-        stockBefore = product.stock;
-        product.stock += item.qty;
+        stockBefore = product.stock || 0;
+        product.stock = (product.stock || 0) + (item.qty || 0);
       }
       product.markModified('variants');
       await product.save();
 
       // Log stock history
+      const stockAfter = item.variant 
+        ? ((product.variants && product.variants.find(v => v.name === item.variant)?.stock) ?? product.stock ?? 0)
+        : (product.stock ?? 0);
+
       await StockHistory.create({
         product: item.product,
         action: 'ORDER_RETURNED',
-        quantity: item.qty,
-        stockBefore,
-        stockAfter: item.variant ? product.variants.find(v => v.name === item.variant)?.stock : product.stock,
+        quantity: item.qty || 0,
+        stockBefore: stockBefore || 0,
+        stockAfter: stockAfter || 0,
         note: `Order ${order._id} status changed from ${oldStatus} to ${newStatus}`
       });
     }
@@ -55,25 +62,32 @@ const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
       
       let stockBefore = 0;
       if (item.variant) {
-        const variant = product.variants.find(v => v.name === item.variant);
+        const variant = product.variants && product.variants.find(v => v.name === item.variant);
         if (variant) {
-          stockBefore = variant.stock;
-          variant.stock -= item.qty;
+          stockBefore = variant.stock || 0;
+          variant.stock = (variant.stock || 0) - (item.qty || 0);
+        } else {
+          stockBefore = product.stock || 0;
+          product.stock = (product.stock || 0) - (item.qty || 0);
         }
       } else {
-        stockBefore = product.stock;
-        product.stock -= item.qty;
+        stockBefore = product.stock || 0;
+        product.stock = (product.stock || 0) - (item.qty || 0);
       }
       product.markModified('variants');
       await product.save();
 
       // Log stock history
+      const stockAfter = item.variant 
+        ? ((product.variants && product.variants.find(v => v.name === item.variant)?.stock) ?? product.stock ?? 0)
+        : (product.stock ?? 0);
+
       await StockHistory.create({
         product: item.product,
         action: 'ORDER_CREATED',
-        quantity: item.qty,
-        stockBefore,
-        stockAfter: item.variant ? product.variants.find(v => v.name === item.variant)?.stock : product.stock,
+        quantity: item.qty || 0,
+        stockBefore: stockBefore || 0,
+        stockAfter: stockAfter || 0,
         note: `Order ${order._id} status changed from ${oldStatus} to ${newStatus}`
       });
     }
@@ -810,6 +824,12 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
         if (!owner.wallet) {
           owner.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
         }
+        
+        // Ensure values are numbers to prevent NaN
+        owner.wallet.availableBalance = Number(owner.wallet.availableBalance || 0);
+        owner.wallet.totalReferralOrders = Number(owner.wallet.totalReferralOrders || 0);
+        owner.wallet.totalSalesGenerated = Number(owner.wallet.totalSalesGenerated || 0);
+        owner.wallet.totalDiscountGiven = Number(owner.wallet.totalDiscountGiven || 0);
 
         // Transition 1: From Pending to Delivered (Credit Wallet Available Balance)
         if (status === 'Delivered' && order.referralCommissionStatus === 'Pending') {
@@ -830,6 +850,7 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
             order: order._id
           });
           
+          owner.markModified('wallet');
           await owner.save();
         } 
         // Transition 2: From Earned to Cancelled/Returned/Refunded (Revoke Wallet Available Balance)
@@ -852,6 +873,7 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
             order: order._id
           });
 
+          owner.markModified('wallet');
           await owner.save();
         }
         // Transition 3: From Pending to Cancelled/Returned/Refunded (Cancel pending commission)
@@ -877,6 +899,7 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
             order: order._id
           });
           
+          owner.markModified('wallet');
           await owner.save();
         }
       }
@@ -890,6 +913,8 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
         if (!mod.wallet) {
           mod.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
         }
+
+        mod.wallet.availableBalance = Number(mod.wallet.availableBalance || 0);
 
         // Transition 1: From not Delivered to Delivered (Credit Moderator Available Balance)
         if (status === 'Delivered' && order.moderatorProfitStatus !== 'Earned') {
@@ -906,6 +931,7 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
             order: order._id
           });
           
+          mod.markModified('wallet');
           await mod.save();
         } 
         // Transition 2: From Earned to Cancelled/Returned/Refunded (Revoke Moderator Available Balance)
@@ -924,6 +950,7 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
             order: order._id
           });
 
+          mod.markModified('wallet');
           await mod.save();
         }
         // Transition 3: From Pending to Cancelled/Returned/Refunded
@@ -945,6 +972,7 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
             order: order._id
           });
           
+          mod.markModified('wallet');
           await mod.save();
         }
       }
