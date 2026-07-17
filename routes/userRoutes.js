@@ -129,7 +129,7 @@ router.put('/:id/moderator', protect, adminOnly, async (req, res) => {
       });
     }
 
-    user.role = 'moderator';
+    user.role = 'reseller';
     user.isModeratorPending = false;
 
     await user.save();
