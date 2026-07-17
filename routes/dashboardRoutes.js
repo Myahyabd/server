@@ -61,8 +61,9 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       const orderDate = new Date(o.createdAt || Date.now());
       const profit = calculateOrderProfit(o) || 0;
       const isGiftVal = o.isGift;
+      const orderRevenue = (o.totalPrice || 0) - (o.deliveryCharge || 0) - (o.codCharge || 0);
 
-      totalRevenue += o.totalPrice || 0;
+      totalRevenue += orderRevenue;
       totalProfit += profit;
       totalCouponDiscount += o.couponDiscount || 0;
       totalReferralDiscount += o.referralDiscount || 0;
@@ -73,15 +74,15 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       }
 
       if (orderDate >= todayStart) {
-        todaySales += o.totalPrice || 0;
+        todaySales += orderRevenue;
       } else if (orderDate >= yesterdayStart && orderDate < todayStart) {
-        yesterdaySales += o.totalPrice || 0;
+        yesterdaySales += orderRevenue;
       }
       if (orderDate >= monthStart) {
-        monthlySales += o.totalPrice || 0;
+        monthlySales += orderRevenue;
       }
       if (orderDate >= yearStart) {
-        yearlySales += o.totalPrice || 0;
+        yearlySales += orderRevenue;
       }
     });
 

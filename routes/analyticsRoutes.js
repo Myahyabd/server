@@ -336,7 +336,7 @@ router.get('/summary', protect, adminOnly, async (req, res) => {
         orderStatusCounts[o.status]++;
       }
       if (['Processing', 'Shipped', 'Delivered'].includes(o.status)) {
-        rangeRevenue += o.totalPrice || 0;
+        rangeRevenue += (o.totalPrice || 0) - (o.deliveryCharge || 0) - (o.codCharge || 0);
         rangeProfit += calculateOrderProfit(o);
       }
     });
@@ -352,7 +352,10 @@ router.get('/summary', protect, adminOnly, async (req, res) => {
     const weekOrders = await Order.find({ createdAt: { $gte: startOfWeek, $lte: endOfToday } });
     const monthOrders = await Order.find({ createdAt: { $gte: startOfMonth, $lte: endOfToday } });
 
-    const getRevenueForSet = (orders) => orders.filter(o => ['Processing', 'Shipped', 'Delivered'].includes(o.status)).reduce((acc, o) => acc + (o.totalPrice || 0), 0);
+    const getRevenueForSet = (orders) => 
+      orders
+        .filter(o => ['Processing', 'Shipped', 'Delivered'].includes(o.status))
+        .reduce((acc, o) => acc + (o.totalPrice || 0) - (o.deliveryCharge || 0) - (o.codCharge || 0), 0);
 
     const todaySales = getRevenueForSet(todayOrders);
     const weekSales = getRevenueForSet(weekOrders);
@@ -372,7 +375,7 @@ router.get('/summary', protect, adminOnly, async (req, res) => {
             $sum: {
               $cond: [
                 { $in: ['$status', ['Processing', 'Shipped', 'Delivered']] },
-                '$totalPrice',
+                { $subtract: [ '$totalPrice', { $add: [ { $ifNull: ['$deliveryCharge', 0] }, { $ifNull: ['$codCharge', 0] } ] } ] },
                 0
               ]
             }
