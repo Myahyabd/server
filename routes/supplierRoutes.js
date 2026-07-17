@@ -324,6 +324,18 @@ router.post('/purchase-invoice', protect, adminOnly, async (req, res) => {
         product.stock = newStock;
         product.buyingPrice = basePrice / qty;
         product.landedCost = newLandedCost;
+
+        // Propagate buyingPrice and landedCost to variants that don't have them
+        if (product.hasVariants && product.variants && product.variants.length > 0) {
+          product.variants.forEach(v => {
+            if (!v.buyingPrice || v.buyingPrice === 0) {
+              v.buyingPrice = basePrice / qty;
+            }
+            if (!v.landedCost || v.landedCost === 0) {
+              v.landedCost = newLandedCost;
+            }
+          });
+        }
       }
       product.markModified('variants');
       await product.save();
