@@ -262,6 +262,7 @@ router.get('/profile', protect, async (req, res) => {
 
     res.json(user);
   } catch (error) {
+    console.error("GET PROFILE ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -401,6 +402,7 @@ router.post('/apply-reseller', protect, async (req, res) => {
       }
     });
   } catch (error) {
+    console.error("APPLY RESELLER ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 });
