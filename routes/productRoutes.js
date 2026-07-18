@@ -267,6 +267,24 @@ router.get(
 
       if (!isStaff) {
         delete productObj.moderatorPrice;
+        delete productObj.buyingPrice;
+        delete productObj.landedCost;
+        if (productObj.variants) {
+          productObj.variants.forEach(v => {
+            delete v.moderatorPrice;
+            delete v.buyingPrice;
+            delete v.landedCost;
+          });
+        }
+      }
+      const isReseller = req.user && req.user.role === 'reseller';
+      if (!isStaff && !isReseller) {
+        delete productObj.resellerPrice;
+        if (productObj.variants) {
+          productObj.variants.forEach(v => {
+            delete v.resellerPrice;
+          });
+        }
       }
 
       res.json(productObj);
@@ -396,6 +414,24 @@ router.get(
         const pObj = p.toObject();
         if (!isStaff) {
           delete pObj.moderatorPrice;
+          delete pObj.buyingPrice;
+          delete pObj.landedCost;
+          if (pObj.variants) {
+            pObj.variants.forEach(v => {
+              delete v.moderatorPrice;
+              delete v.buyingPrice;
+              delete v.landedCost;
+            });
+          }
+        }
+        const isReseller = req.user && req.user.role === 'reseller';
+        if (!isStaff && !isReseller) {
+          delete pObj.resellerPrice;
+          if (pObj.variants) {
+            pObj.variants.forEach(v => {
+              delete v.resellerPrice;
+            });
+          }
         }
         return pObj;
       });
@@ -475,6 +511,7 @@ router.put(
       product.salePrice = req.body.salePrice;
 
       product.moderatorPrice = req.body.moderatorPrice;
+      product.resellerPrice = req.body.resellerPrice;
 
       product.shortDesc = req.body.shortDesc || product.shortDesc;
 

@@ -46,6 +46,10 @@ const variantSchema = mongoose.Schema(
       type: Number,
     },
 
+    resellerPrice: {
+      type: Number,
+    },
+
     vipPrice: {
       type: Number,
       default: 0,
@@ -126,6 +130,10 @@ const productSchema = mongoose.Schema(
     },
 
     moderatorPrice: {
+      type: Number,
+    },
+
+    resellerPrice: {
       type: Number,
     },
 
