@@ -578,7 +578,6 @@ router.post('/', protect, async (req, res) => {
           }
         }
       }
-    }
     } else if (couponCode && !isGift) {
       const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), status: 'Active' });
       if (coupon) {
