@@ -351,8 +351,8 @@ router.put('/:id/profile', protect, adminOnly, async (req, res) => {
 // APPLY TO BE A RESELLER (MODERATOR)
 router.post('/apply-reseller', protect, async (req, res) => {
   try {
-    const { name, phone, email, dateOfBirth, district, thana, address, resellerRoles } = req.body;
-    if (!name || !phone || !email || !dateOfBirth || !district || !thana || !address || !resellerRoles) {
+    const { name, phone, email, dateOfBirth, district, thana, address } = req.body;
+    if (!name || !phone || !email || !dateOfBirth || !district || !thana || !address) {
       return res.status(400).json({ message: 'All form fields are required' });
     }
 
@@ -382,7 +382,6 @@ router.post('/apply-reseller', protect, async (req, res) => {
     user.district = district;
     user.thana = thana;
     user.address = address;
-    user.resellerRoles = resellerRoles;
     user.isModeratorPending = true;
 
     await user.save();
@@ -398,7 +397,6 @@ router.post('/apply-reseller', protect, async (req, res) => {
         district: user.district,
         thana: user.thana,
         address: user.address,
-        resellerRoles: user.resellerRoles,
         isModeratorPending: user.isModeratorPending
       }
     });
