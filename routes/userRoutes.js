@@ -296,6 +296,14 @@ router.put('/profile', protect, async (req, res) => {
       }
     });
 
+    if (req.body.phone !== undefined) {
+      const existingPhone = await User.findOne({ phone: req.body.phone });
+      if (existingPhone && existingPhone._id.toString() !== user._id.toString()) {
+        return res.status(400).json({ message: 'Phone number is already in use' });
+      }
+      user.phone = req.body.phone;
+    }
+
     await user.save();
     res.json({ message: 'Profile updated successfully', user });
   } catch (error) {
