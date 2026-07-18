@@ -351,9 +351,9 @@ router.put('/:id/profile', protect, adminOnly, async (req, res) => {
 // APPLY TO BE A RESELLER (MODERATOR)
 router.post('/apply-reseller', protect, async (req, res) => {
   try {
-    const { email, address } = req.body;
-    if (!email || !address) {
-      return res.status(400).json({ message: 'Email and Address are required' });
+    const { name, phone, email, dateOfBirth, district, thana, address, resellerRoles } = req.body;
+    if (!name || !phone || !email || !dateOfBirth || !district || !thana || !address || !resellerRoles) {
+      return res.status(400).json({ message: 'All form fields are required' });
     }
 
     const user = await User.findById(req.user._id);
@@ -367,11 +367,22 @@ router.post('/apply-reseller', protect, async (req, res) => {
 
     const existingEmail = await User.findOne({ email });
     if (existingEmail && existingEmail._id.toString() !== user._id.toString()) {
-      return res.status(400).json({ message: 'Email address is already in use' });
+      return res.status(400).json({ message: 'Email address is already in use by another account' });
     }
 
+    const existingPhone = await User.findOne({ phone });
+    if (existingPhone && existingPhone._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ message: 'Mobile number is already in use by another account' });
+    }
+
+    user.name = name;
+    user.phone = phone;
     user.email = email;
+    user.dateOfBirth = dateOfBirth;
+    user.district = district;
+    user.thana = thana;
     user.address = address;
+    user.resellerRoles = resellerRoles;
     user.isModeratorPending = true;
 
     await user.save();
@@ -381,8 +392,13 @@ router.post('/apply-reseller', protect, async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
+        phone: user.phone,
         email: user.email,
+        dateOfBirth: user.dateOfBirth,
+        district: user.district,
+        thana: user.thana,
         address: user.address,
+        resellerRoles: user.resellerRoles,
         isModeratorPending: user.isModeratorPending
       }
     });

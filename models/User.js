@@ -66,6 +66,16 @@ const userSchema = new mongoose.Schema({
     default: '',
   },
 
+  dateOfBirth: {
+    type: String,
+    default: '',
+  },
+
+  resellerRoles: {
+    type: [String],
+    default: [],
+  },
+
   notes: {
     type: String,
     default: '',
