@@ -182,15 +182,18 @@ userSchema.pre('save', async function (next) {
     this.referralCode = code;
   }
 
-  if (this.role === 'reseller' && !this.resellerId) {
-    let idExists = true;
-    let newId;
-    while (idExists) {
-      newId = Math.floor(1000 + Math.random() * 9000); // 4-digit number
-      const duplicate = await mongoose.models.User.findOne({ resellerId: newId });
-      if (!duplicate) idExists = false;
+  if (this.role === 'reseller') {
+    if (!this.resellerId) {
+      let idExists = true;
+      let newId;
+      while (idExists) {
+        newId = Math.floor(1000 + Math.random() * 9000); // 4-digit number
+        const duplicate = await mongoose.models.User.findOne({ resellerId: newId });
+        if (!duplicate) idExists = false;
+      }
+      this.resellerId = newId;
     }
-    this.resellerId = newId;
+    this.referralCode = `RSL${this.resellerId}`;
   }
 
   if (typeof next === 'function') next();

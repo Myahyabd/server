@@ -221,29 +221,41 @@ router.post('/guest/place-order', async (req, res) => {
     let referralCommission = 0;
     let referralOwnerId = null;
 
-    if (referralCode && !isGift) {
+    if (req.user && req.user.role === 'reseller' && !isGift) {
+      referralOwnerId = req.user._id;
+      refUsedCode = req.user.referralCode || '';
+      referralCommission = calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0);
+    } else if (referralCode && !isGift) {
       const moderator = await User.findOne({
         referralCode: referralCode.toUpperCase(),
         role: { $in: ['admin', 'moderator', 'reseller'] }
       });
-      const refConfig = settings.referralSettings;
-      if (moderator && refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+      if (moderator) {
         refUsedCode = moderator.referralCode;
         referralOwnerId = moderator._id;
-        if (refConfig.discountType === 'Percentage') {
-          referralDiscount = (refConfig.value / 100) * subtotal;
-          if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
-            referralDiscount = refConfig.maxDiscount;
+        
+        const refConfig = settings.referralSettings;
+        if (refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+          if (refConfig.discountType === 'Percentage') {
+            referralDiscount = (refConfig.value / 100) * subtotal;
+            if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
+              referralDiscount = refConfig.maxDiscount;
+            }
+          } else {
+            referralDiscount = refConfig.value;
           }
-        } else {
-          referralDiscount = refConfig.value;
         }
 
-        // Calculate Commission
-        if (refConfig.commissionType === 'Percentage') {
-          referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
+        if (moderator.role === 'reseller') {
+          referralCommission = calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0);
         } else {
-          referralCommission = refConfig.commissionValue || 50;
+          if (refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+            if (refConfig.commissionType === 'Percentage') {
+              referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
+            } else {
+              referralCommission = refConfig.commissionValue || 50;
+            }
+          }
         }
       }
     } else if (couponCode && !isGift) {
@@ -513,29 +525,41 @@ router.post('/', protect, async (req, res) => {
     let referralCommission = 0;
     let referralOwnerId = null;
 
-    if (referralCode && !isGift) {
+    if (req.user && req.user.role === 'reseller' && !isGift) {
+      referralOwnerId = req.user._id;
+      refUsedCode = req.user.referralCode || '';
+      referralCommission = calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0);
+    } else if (referralCode && !isGift) {
       const moderator = await User.findOne({
         referralCode: referralCode.toUpperCase(),
         role: { $in: ['admin', 'moderator', 'reseller'] }
       });
-      const refConfig = settings.referralSettings;
-      if (moderator && refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+      if (moderator) {
         refUsedCode = moderator.referralCode;
         referralOwnerId = moderator._id;
-        if (refConfig.discountType === 'Percentage') {
-          referralDiscount = (refConfig.value / 100) * subtotal;
-          if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
-            referralDiscount = refConfig.maxDiscount;
+        
+        const refConfig = settings.referralSettings;
+        if (refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+          if (refConfig.discountType === 'Percentage') {
+            referralDiscount = (refConfig.value / 100) * subtotal;
+            if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
+              referralDiscount = refConfig.maxDiscount;
+            }
+          } else {
+            referralDiscount = refConfig.value;
           }
-        } else {
-          referralDiscount = refConfig.value;
         }
 
-        // Calculate Commission
-        if (refConfig.commissionType === 'Percentage') {
-          referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
+        if (moderator.role === 'reseller') {
+          referralCommission = calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0);
         } else {
-          referralCommission = refConfig.commissionValue || 50;
+          if (refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
+            if (refConfig.commissionType === 'Percentage') {
+              referralCommission = Math.round((refConfig.commissionValue / 100) * (subtotal - referralDiscount));
+            } else {
+              referralCommission = refConfig.commissionValue || 50;
+            }
+          }
         }
       }
     } else if (couponCode && !isGift) {

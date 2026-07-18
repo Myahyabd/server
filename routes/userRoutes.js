@@ -439,40 +439,39 @@ router.get('/reseller/stats', protect, async (req, res) => {
     const rank = myRankIndex !== -1 ? myRankIndex + 1 : resellers.length;
     const totalResellers = resellers.length;
     
-    // Let's fetch current reseller's order counts by status
-    const totalOrders = await Order.countDocuments({
-      $or: [
-        { moderator: req.user._id },
-        { referralOwner: req.user._id }
-      ]
-    });
+    // Fetch reseller's orders counts and revenue metrics
+    const totalOrders = await Order.countDocuments({ referralOwner: req.user._id });
     
     const pendingOrders = await Order.countDocuments({
-      $or: [
-        { moderator: req.user._id },
-        { referralOwner: req.user._id }
-      ],
-      status: { $in: ['Pending', 'Processing', 'Hold'] }
+      referralOwner: req.user._id,
+      status: { $in: ['Pending', 'Processing', 'Hold', 'Pick & Pack', 'Shipped'] }
     });
     
     const deliveredOrders = await Order.countDocuments({
-      $or: [
-        { moderator: req.user._id },
-        { referralOwner: req.user._id }
-      ],
+      referralOwner: req.user._id,
       status: 'Delivered'
     });
     
     const cancelledOrders = await Order.countDocuments({
-      $or: [
-        { moderator: req.user._id },
-        { referralOwner: req.user._id }
-      ],
-      status: { $in: ['Cancelled', 'Failed', 'Returned'] }
+      referralOwner: req.user._id,
+      status: 'Cancelled'
     });
+
+    const returnedOrders = await Order.countDocuments({
+      referralOwner: req.user._id,
+      status: 'Returned'
+    });
+
+    // Calculate dynamic pending revenue
+    const pendingCommissionOrders = await Order.find({
+      referralOwner: req.user._id,
+      referralCommissionStatus: 'Pending'
+    }).select('referralCommission');
+    const pendingRevenue = pendingCommissionOrders.reduce((sum, o) => sum + (o.referralCommission || 0), 0);
     
     res.json({
       resellerId: req.user.resellerId || 'N/A',
+      referralCode: req.user.referralCode || 'N/A',
       rank: `#${rank}`,
       totalResellers,
       orderCount: totalOrders,
@@ -480,7 +479,12 @@ router.get('/reseller/stats', protect, async (req, res) => {
         totalOrders,
         pendingOrders,
         deliveredOrders,
-        cancelledOrders
+        cancelledOrders,
+        returnedOrders,
+        pendingRevenue,
+        availableRevenue: req.user.wallet?.availableBalance || 0,
+        withdrawnAmount: req.user.wallet?.paidCommission || 0,
+        walletBalance: req.user.wallet?.availableBalance || 0
       }
     });
   } catch (error) {
