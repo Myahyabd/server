@@ -46,6 +46,11 @@ const userSchema = new mongoose.Schema({
     uppercase: true,
   },
 
+  referredBy: {
+    type: String,
+    default: '',
+  },
+
   facebookLink: {
     type: String,
     default: '',

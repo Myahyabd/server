@@ -382,7 +382,7 @@ router.put('/:id/profile', protect, adminOnly, async (req, res) => {
 // APPLY TO BE A RESELLER (MODERATOR)
 router.post('/apply-reseller', protect, async (req, res) => {
   try {
-    const { name, phone, email, dateOfBirth, district, thana, address } = req.body;
+    const { name, phone, email, dateOfBirth, district, thana, address, referredBy } = req.body;
     if (!name || !phone || !email || !dateOfBirth || !district || !thana || !address) {
       return res.status(400).json({ message: 'All form fields are required' });
     }
@@ -404,6 +404,17 @@ router.post('/apply-reseller', protect, async (req, res) => {
     const existingPhone = await User.findOne({ phone });
     if (existingPhone && existingPhone._id.toString() !== user._id.toString()) {
       return res.status(400).json({ message: 'Mobile number is already in use by another account' });
+    }
+
+    if (referredBy && referredBy.trim()) {
+      const trimmedRef = referredBy.trim().toUpperCase();
+      const referrer = await User.findOne({ referralCode: trimmedRef });
+      if (!referrer) {
+        return res.status(400).json({ message: 'অবৈধ রেফারেল কোড! অনুগ্রহ করে সঠিক কোড দিন।' });
+      }
+      user.referredBy = trimmedRef;
+    } else {
+      user.referredBy = '';
     }
 
     user.name = name;
@@ -428,6 +439,7 @@ router.post('/apply-reseller', protect, async (req, res) => {
         district: user.district,
         thana: user.thana,
         address: user.address,
+        referredBy: user.referredBy,
         isModeratorPending: user.isModeratorPending
       }
     });
