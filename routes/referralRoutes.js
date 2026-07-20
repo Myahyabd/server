@@ -260,13 +260,25 @@ router.get('/admin/wallets', protect, adminOnly, async (req, res) => {
     const { all } = req.query;
     let query = { role: { $in: ['admin', 'moderator', 'reseller'] } };
     if (all === 'true') {
-      // Find all users who have a referral code or just everyone
       query = {};
     }
     const users = await User.find(query)
-      .select('name referralCode role wallet email phone')
+      .select('name referralCode role wallet email phone resellerId')
       .sort({ name: 1 });
-    res.json(users);
+
+    const usersWithStats = await Promise.all(
+      users.map(async (u) => {
+        const totalReferredCount = u.referralCode
+          ? await User.countDocuments({ referredBy: u.referralCode })
+          : 0;
+        return {
+          ...u.toObject(),
+          totalReferredCount
+        };
+      })
+    );
+
+    res.json(usersWithStats);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
