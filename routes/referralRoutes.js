@@ -78,8 +78,11 @@ router.get('/wallet', protect, resellerOrStaff, async (req, res) => {
       .populate('order', 'totalPrice status createdAt')
       .sort({ createdAt: -1 });
 
+    const totalReferredUsers = user.referralCode ? await User.countDocuments({ referredBy: user.referralCode }) : 0;
+
     res.json({
       referralCode: user.referralCode,
+      totalReferredUsers,
       wallet: user.wallet || {
         availableBalance: 0,
         pendingCommission: 0,
