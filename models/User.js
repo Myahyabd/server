@@ -187,7 +187,7 @@ userSchema.pre('save', async function (next) {
     this.referralCode = code;
   }
 
-  if (this.role === 'reseller') {
+  if (['admin', 'moderator', 'reseller'].includes(this.role)) {
     if (!this.resellerId) {
       let idExists = true;
       let newId;

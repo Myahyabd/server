@@ -452,7 +452,7 @@ router.post('/apply-reseller', protect, async (req, res) => {
 // GET RESELLER DASHBOARD STATS & RANK
 router.get('/reseller/stats', protect, async (req, res) => {
   try {
-    if (req.user.role !== 'reseller' && req.user.role !== 'admin') {
+    if (!['reseller', 'admin', 'moderator'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }
     
@@ -482,6 +482,9 @@ router.get('/reseller/stats', protect, async (req, res) => {
     const myRankIndex = resellerOrdersCounts.findIndex(r => r.userId === userId);
     const rank = myRankIndex !== -1 ? myRankIndex + 1 : resellers.length;
     const totalResellers = resellers.length;
+
+    // Count how many users registered using this user's referral code
+    const totalReferredUsers = req.user.referralCode ? await User.countDocuments({ referredBy: req.user.referralCode }) : 0;
     
     // Fetch reseller's orders counts and revenue metrics
     const totalOrders = await Order.countDocuments({ referralOwner: req.user._id });
@@ -519,6 +522,7 @@ router.get('/reseller/stats', protect, async (req, res) => {
       rank: `#${rank}`,
       totalResellers,
       orderCount: totalOrders,
+      totalReferredUsers,
       stats: {
         totalOrders,
         pendingOrders,
@@ -526,6 +530,7 @@ router.get('/reseller/stats', protect, async (req, res) => {
         cancelledOrders,
         returnedOrders,
         pendingRevenue,
+        totalReferredUsers,
         availableRevenue: req.user.wallet?.availableBalance || 0,
         withdrawnAmount: req.user.wallet?.paidCommission || 0,
         walletBalance: req.user.wallet?.availableBalance || 0
