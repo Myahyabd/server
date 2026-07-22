@@ -198,7 +198,11 @@ userSchema.pre('save', async function (next) {
       }
       this.resellerId = newId;
     }
-    this.referralCode = `RSL${this.resellerId}`;
+    if (this.role === 'reseller') {
+      this.referralCode = `RSL${this.resellerId}`;
+    } else {
+      this.referralCode = `NUS${this.resellerId}`;
+    }
   }
 
   if (typeof next === 'function') next();
