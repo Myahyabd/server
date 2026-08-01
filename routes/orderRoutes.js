@@ -10,6 +10,7 @@ const protect = require('../middleware/authMiddleware');
 const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
 const WalletTransaction = require('../models/WalletTransaction');
 const { sendNewOrderAlert } = require('../utils/sendEmail');
+const { roundMoney } = require('../utils/money');
 
 // HELPER: Stock transition manager on status change
 const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
@@ -198,8 +199,8 @@ router.post('/guest/place-order', async (req, res) => {
       product.markModified('variants');
       await product.save();
 
-      subtotal += sellPrice * item.qty;
-      landedCostTotal += costPrice * item.qty;
+      subtotal += roundMoney(sellPrice * item.qty);
+      landedCostTotal += roundMoney(costPrice * item.qty);
 
       let modPrice = 0;
       if (item.variant) {
@@ -215,13 +216,13 @@ router.post('/guest/place-order', async (req, res) => {
         product: item.product,
         name: product.name,
         image: item.image || (product.images && product.images[0]) || '',
-        price: isGift ? 0 : sellPrice,
-        buyingCost: costPrice,
+        price: isGift ? 0 : roundMoney(sellPrice),
+        buyingCost: roundMoney(costPrice),
         qty: item.qty,
         variant: item.variant || '',
-        moderatorPrice: modPrice,
-        sellingPrice: sellPrice,
-        profitMargin: sellPrice - modPrice
+        moderatorPrice: roundMoney(modPrice),
+        sellingPrice: roundMoney(sellPrice),
+        profitMargin: roundMoney(sellPrice - modPrice)
       });
     }
 
@@ -244,7 +245,7 @@ router.post('/guest/place-order', async (req, res) => {
       const refConfig = settings.referralSettings;
       if (refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
         if (refConfig.discountType === 'Percentage') {
-          referralDiscount = (refConfig.value / 100) * subtotal;
+          referralDiscount = roundMoney((refConfig.value / 100) * subtotal);
           if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
             referralDiscount = refConfig.maxDiscount;
           }
@@ -274,7 +275,7 @@ router.post('/guest/place-order', async (req, res) => {
         if (isNotExpired && isUnderLimit && isAboveMin) {
           couponId = coupon._id;
           if (coupon.discountType === 'Percentage') {
-            couponDiscount = (coupon.value / 100) * subtotal;
+            couponDiscount = roundMoney((coupon.value / 100) * subtotal);
             if (coupon.maxDiscount !== null && couponDiscount > coupon.maxDiscount) {
               couponDiscount = coupon.maxDiscount;
             }
@@ -325,8 +326,16 @@ router.post('/guest/place-order', async (req, res) => {
       }
     }
 
-    const finalSubtotal = isGift ? 0 : (subtotal - couponDiscount - referralDiscount);
-    const totalPrice = finalSubtotal + deliveryCharge + codCharge;
+    subtotal = roundMoney(subtotal);
+    landedCostTotal = roundMoney(landedCostTotal);
+    couponDiscount = roundMoney(couponDiscount);
+    referralDiscount = roundMoney(referralDiscount);
+    referralCommission = roundMoney(referralCommission);
+    deliveryCharge = roundMoney(deliveryCharge);
+    codCharge = roundMoney(codCharge);
+
+    const finalSubtotal = isGift ? 0 : roundMoney(subtotal - couponDiscount - referralDiscount);
+    const totalPrice = roundMoney(finalSubtotal + deliveryCharge + codCharge);
 
     const order = new Order({
       user: user._id,
@@ -357,8 +366,8 @@ router.post('/guest/place-order', async (req, res) => {
         phone: giftDetails?.phone || shippingAddress.phone,
         address: giftDetails?.address || shippingAddress.address,
         reason: giftDetails?.reason || '',
-        packagingCost: Number(giftDetails?.packagingCost || 0),
-        otherExpense: Number(giftDetails?.otherExpense || 0)
+        packagingCost: roundMoney(giftDetails?.packagingCost || 0),
+        otherExpense: roundMoney(giftDetails?.otherExpense || 0)
       } : undefined,
       status: 'Pending',
       isDelivered: false,
@@ -512,8 +521,8 @@ router.post('/', protect, async (req, res) => {
       product.markModified('variants');
       await product.save();
 
-      subtotal += sellPrice * item.qty;
-      landedCostTotal += costPrice * item.qty;
+      subtotal += roundMoney(sellPrice * item.qty);
+      landedCostTotal += roundMoney(costPrice * item.qty);
 
       let modPrice = 0;
       if (item.variant) {
@@ -529,13 +538,13 @@ router.post('/', protect, async (req, res) => {
         product: item.product,
         name: product.name,
         image: item.image || (product.images && product.images[0]) || '',
-        price: isGift ? 0 : sellPrice,
-        buyingCost: costPrice,
+        price: isGift ? 0 : roundMoney(sellPrice),
+        buyingCost: roundMoney(costPrice),
         qty: item.qty,
         variant: item.variant || '',
-        moderatorPrice: modPrice,
-        sellingPrice: sellPrice,
-        profitMargin: sellPrice - modPrice
+        moderatorPrice: roundMoney(modPrice),
+        sellingPrice: roundMoney(sellPrice),
+        profitMargin: roundMoney(sellPrice - modPrice)
       });
     }
 
@@ -558,7 +567,7 @@ router.post('/', protect, async (req, res) => {
       const refConfig = settings.referralSettings;
       if (refConfig && refConfig.enabled && subtotal >= refConfig.minOrder) {
         if (refConfig.discountType === 'Percentage') {
-          referralDiscount = (refConfig.value / 100) * subtotal;
+          referralDiscount = roundMoney((refConfig.value / 100) * subtotal);
           if (refConfig.maxDiscount !== null && referralDiscount > refConfig.maxDiscount) {
             referralDiscount = refConfig.maxDiscount;
           }
@@ -588,7 +597,7 @@ router.post('/', protect, async (req, res) => {
         if (isNotExpired && isUnderLimit && isAboveMin) {
           couponId = coupon._id;
           if (coupon.discountType === 'Percentage') {
-            couponDiscount = (coupon.value / 100) * subtotal;
+            couponDiscount = roundMoney((coupon.value / 100) * subtotal);
             if (coupon.maxDiscount !== null && couponDiscount > coupon.maxDiscount) {
               couponDiscount = coupon.maxDiscount;
             }
@@ -643,13 +652,21 @@ router.post('/', protect, async (req, res) => {
       }
     }
 
+    subtotal = roundMoney(subtotal);
+    landedCostTotal = roundMoney(landedCostTotal);
+    couponDiscount = roundMoney(couponDiscount);
+    referralDiscount = roundMoney(referralDiscount);
+    referralCommission = roundMoney(referralCommission);
+    deliveryCharge = roundMoney(deliveryCharge);
+    codCharge = roundMoney(codCharge);
+
     // Final Grand Total
-    const finalSubtotal = isGift ? 0 : (subtotal - couponDiscount - referralDiscount);
-    const totalPrice = finalSubtotal + deliveryCharge + codCharge;
+    const finalSubtotal = isGift ? 0 : roundMoney(subtotal - couponDiscount - referralDiscount);
+    const totalPrice = roundMoney(finalSubtotal + deliveryCharge + codCharge);
 
     const isModeratorOrder = req.body.isModeratorOrder !== undefined ? req.body.isModeratorOrder : (req.user.role === 'moderator');
     const moderatorProfitTotal = isModeratorOrder
-      ? calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0)
+      ? roundMoney(calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0))
       : 0;
 
     const order = new Order({
@@ -681,8 +698,8 @@ router.post('/', protect, async (req, res) => {
         phone: giftDetails?.phone || shippingAddress.phone,
         address: giftDetails?.address || shippingAddress.address,
         reason: giftDetails?.reason || '',
-        packagingCost: Number(giftDetails?.packagingCost || 0),
-        otherExpense: Number(giftDetails?.otherExpense || 0)
+        packagingCost: roundMoney(giftDetails?.packagingCost || 0),
+        otherExpense: roundMoney(giftDetails?.otherExpense || 0)
       } : undefined,
       status: isOffline ? 'Delivered' : 'Pending',
       isDelivered: !!isOffline,

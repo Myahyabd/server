@@ -380,7 +380,7 @@ router.get(
           };
 
       // PAGINATION
-      const nopage = req.query.nopage === 'true';
+      const nopage = req.query.nopage === 'true' || isAdminPanel;
       const pageSize = 12;
       const page = Number(req.query.page) || 1;
 

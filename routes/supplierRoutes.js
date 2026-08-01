@@ -5,6 +5,7 @@ const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 const protect = require('../middleware/authMiddleware');
 const { adminOnly } = require('../middleware/roleMiddleware');
+const { roundMoney } = require('../utils/money');
 
 // GET ALL SUPPLIERS
 router.get('/', protect, adminOnly, async (req, res) => {
@@ -116,8 +117,8 @@ router.post('/purchase', protect, adminOnly, async (req, res) => {
     const transCost = Number(transportCost || 0);
     const othExpense = Number(otherExpense || 0);
 
-    const totalCost = priceVal + delCost + transCost + othExpense;
-    const purchaseLandedCost = totalCost / qty;
+    const totalCost = roundMoney(priceVal + delCost + transCost + othExpense);
+    const purchaseLandedCost = roundMoney(totalCost / qty);
 
     // Recalculate Product Stock & Landed Cost using Weighted Average
     if (variantName) {
@@ -130,23 +131,23 @@ router.post('/purchase', protect, adminOnly, async (req, res) => {
       const currentStock = variant.stock || 0;
       const currentLanded = variant.landedCost || 0;
       const newStock = currentStock + qty;
-      const newLandedCost = newStock > 0 
-        ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+      const newLandedCost = newStock > 0
+        ? roundMoney(((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock)
         : purchaseLandedCost;
 
       variant.stock = newStock;
-      variant.buyingPrice = priceVal / qty;
+      variant.buyingPrice = roundMoney(priceVal / qty);
       variant.landedCost = newLandedCost;
     } else {
       const currentStock = product.stock || 0;
       const currentLanded = product.landedCost || 0;
       const newStock = currentStock + qty;
       const newLandedCost = newStock > 0
-        ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+        ? roundMoney(((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock)
         : purchaseLandedCost;
 
       product.stock = newStock;
-      product.buyingPrice = priceVal / qty;
+      product.buyingPrice = roundMoney(priceVal / qty);
       product.landedCost = newLandedCost;
     }
 
@@ -159,10 +160,10 @@ router.post('/purchase', protect, adminOnly, async (req, res) => {
       variantName: variantName || '',
       supplier: supplier._id,
       quantity: qty,
-      purchasePrice: priceVal,
-      deliveryCost: delCost,
-      transportCost: transCost,
-      otherExpense: othExpense,
+      purchasePrice: roundMoney(priceVal),
+      deliveryCost: roundMoney(delCost),
+      transportCost: roundMoney(transCost),
+      otherExpense: roundMoney(othExpense),
       totalCost,
       landedCost: purchaseLandedCost,
       notes: notes || '',
@@ -235,7 +236,7 @@ router.post('/purchase-invoice', protect, adminOnly, async (req, res) => {
     for (const item of items) {
       const qty = Number(item.quantity);
       const unit = Number(item.unitPrice);
-      const baseTotal = qty * unit;
+      const baseTotal = roundMoney(qty * unit);
       subTotal += baseTotal;
 
       itemsData.push({
@@ -243,22 +244,23 @@ router.post('/purchase-invoice', protect, adminOnly, async (req, res) => {
         variantName: item.variantName || '',
         quantity: qty,
         purchasePrice: baseTotal, // Base price total for this item
-        unitPrice: unit,
+        unitPrice: roundMoney(unit),
         notes: item.notes || ''
       });
     }
 
-    const deliveryVal = Number(deliveryCost || 0);
-    const discountVal = Number(discount || 0);
-    const totalAmount = subTotal + deliveryVal - discountVal;
+    subTotal = roundMoney(subTotal);
+    const deliveryVal = roundMoney(deliveryCost || 0);
+    const discountVal = roundMoney(discount || 0);
+    const totalAmount = roundMoney(subTotal + deliveryVal - discountVal);
 
     // 3. Proportional allocation for Landed Cost
     for (const item of itemsData) {
       const ratio = subTotal > 0 ? (item.purchasePrice / subTotal) : 0;
-      item.proportionalDelivery = deliveryVal * ratio;
-      item.proportionalDiscount = discountVal * ratio;
-      item.totalCost = item.purchasePrice + item.proportionalDelivery - item.proportionalDiscount;
-      item.landedCost = item.totalCost / item.quantity;
+      item.proportionalDelivery = roundMoney(deliveryVal * ratio);
+      item.proportionalDiscount = roundMoney(discountVal * ratio);
+      item.totalCost = roundMoney(item.purchasePrice + item.proportionalDelivery - item.proportionalDiscount);
+      item.landedCost = roundMoney(item.totalCost / item.quantity);
     }
 
     // 4. Generate unique invoice number
@@ -305,12 +307,12 @@ router.post('/purchase-invoice', protect, adminOnly, async (req, res) => {
           const currentStock = variant.stock || 0;
           const currentLanded = variant.landedCost || 0;
           const newStock = currentStock + qty;
-          const newLandedCost = newStock > 0 
-            ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+          const newLandedCost = newStock > 0
+            ? roundMoney(((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock)
             : purchaseLandedCost;
           
           variant.stock = newStock;
-          variant.buyingPrice = basePrice / qty;
+          variant.buyingPrice = roundMoney(basePrice / qty);
           variant.landedCost = newLandedCost;
         }
       } else {
@@ -318,18 +320,18 @@ router.post('/purchase-invoice', protect, adminOnly, async (req, res) => {
         const currentLanded = product.landedCost || 0;
         const newStock = currentStock + qty;
         const newLandedCost = newStock > 0
-          ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+          ? roundMoney(((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock)
           : purchaseLandedCost;
         
         product.stock = newStock;
-        product.buyingPrice = basePrice / qty;
+        product.buyingPrice = roundMoney(basePrice / qty);
         product.landedCost = newLandedCost;
 
         // Propagate buyingPrice and landedCost to variants that don't have them
         if (product.hasVariants && product.variants && product.variants.length > 0) {
           product.variants.forEach(v => {
             if (!v.buyingPrice || v.buyingPrice === 0) {
-              v.buyingPrice = basePrice / qty;
+              v.buyingPrice = roundMoney(basePrice / qty);
             }
             if (!v.landedCost || v.landedCost === 0) {
               v.landedCost = newLandedCost;
@@ -427,7 +429,7 @@ router.put('/invoices/:id', protect, adminOnly, async (req, res) => {
     for (const item of items) {
       const qty = Number(item.quantity);
       const unit = Number(item.unitPrice);
-      const baseTotal = qty * unit;
+      const baseTotal = roundMoney(qty * unit);
       subTotal += baseTotal;
 
       itemsData.push({
@@ -435,22 +437,23 @@ router.put('/invoices/:id', protect, adminOnly, async (req, res) => {
         variantName: item.variantName || '',
         quantity: qty,
         purchasePrice: baseTotal,
-        unitPrice: unit,
+        unitPrice: roundMoney(unit),
         notes: item.notes || ''
       });
     }
 
-    const deliveryVal = Number(deliveryCost || 0);
-    const discountVal = Number(discount || 0);
-    const totalAmount = subTotal + deliveryVal - discountVal;
+    subTotal = roundMoney(subTotal);
+    const deliveryVal = roundMoney(deliveryCost || 0);
+    const discountVal = roundMoney(discount || 0);
+    const totalAmount = roundMoney(subTotal + deliveryVal - discountVal);
 
     // 5. Proportional allocation for Landed Cost
     for (const item of itemsData) {
       const ratio = subTotal > 0 ? (item.purchasePrice / subTotal) : 0;
-      item.proportionalDelivery = deliveryVal * ratio;
-      item.proportionalDiscount = discountVal * ratio;
-      item.totalCost = item.purchasePrice + item.proportionalDelivery - item.proportionalDiscount;
-      item.landedCost = item.totalCost / item.quantity;
+      item.proportionalDelivery = roundMoney(deliveryVal * ratio);
+      item.proportionalDiscount = roundMoney(discountVal * ratio);
+      item.totalCost = roundMoney(item.purchasePrice + item.proportionalDelivery - item.proportionalDiscount);
+      item.landedCost = roundMoney(item.totalCost / item.quantity);
     }
 
     // 6. Update associated Expense Record
@@ -478,12 +481,12 @@ router.put('/invoices/:id', protect, adminOnly, async (req, res) => {
           const currentStock = variant.stock || 0;
           const currentLanded = variant.landedCost || 0;
           const newStock = currentStock + qty;
-          const newLandedCost = newStock > 0 
-            ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+          const newLandedCost = newStock > 0
+            ? roundMoney(((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock)
             : purchaseLandedCost;
           
           variant.stock = newStock;
-          variant.buyingPrice = basePrice / qty;
+          variant.buyingPrice = roundMoney(basePrice / qty);
           variant.landedCost = newLandedCost;
         }
       } else {
@@ -491,11 +494,11 @@ router.put('/invoices/:id', protect, adminOnly, async (req, res) => {
         const currentLanded = product.landedCost || 0;
         const newStock = currentStock + qty;
         const newLandedCost = newStock > 0
-          ? ((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock
+          ? roundMoney(((currentStock * currentLanded) + (qty * purchaseLandedCost)) / newStock)
           : purchaseLandedCost;
         
         product.stock = newStock;
-        product.buyingPrice = basePrice / qty;
+        product.buyingPrice = roundMoney(basePrice / qty);
         product.landedCost = newLandedCost;
       }
       product.markModified('variants');
