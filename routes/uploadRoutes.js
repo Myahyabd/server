@@ -3,6 +3,15 @@ const router = express.Router();
 const upload = require('../middleware/uploadMiddleware');
 const Media = require('../models/Media');
 
+router.get('/test-config', (req, res) => {
+  res.json({
+    has_cloud_name: !!(process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME),
+    has_api_key: !!(process.env.CLOUDINARY_API_KEY || process.env.CLOUD_API_KEY),
+    has_api_secret: !!(process.env.CLOUDINARY_API_SECRET || process.env.CLOUD_API_SECRET),
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME || 'not set',
+  });
+});
+
 // Helper to extract Cloudinary public_id from URL
 function getPublicIdFromUrl(url) {
   try {
