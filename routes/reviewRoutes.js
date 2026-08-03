@@ -63,10 +63,14 @@ router.get('/', async (req, res) => {
         // Populate user details afterwards by simulating mongoose populate in aggregation or querying and populating
       ]);
       // Let's populate the user reference in aggregated reviews
-      reviews = await Review.populate(reviews, { path: 'user', select: 'name profilePhoto' });
+      reviews = await Review.populate(reviews, [
+        { path: 'user', select: 'name profilePhoto' },
+        { path: 'product', select: 'name images' }
+      ]);
     } else {
       reviews = await Review.find(query)
         .populate('user', 'name profilePhoto')
+        .populate('product', 'name images')
         .sort(sortQuery);
     }
 
