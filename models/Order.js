@@ -235,6 +235,11 @@ const orderSchema = mongoose.Schema(
       default: 'Online',
     },
 
+    shortId: {
+      type: String,
+      default: '',
+    },
+
     isModeratorOrder: {
       type: Boolean,
       default: false,

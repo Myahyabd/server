@@ -676,7 +676,19 @@ router.post('/', protect, async (req, res) => {
       ? roundMoney(calculatedOrderItems.reduce((sum, item) => sum + (item.profitMargin * item.qty), 0))
       : 0;
 
+    // Generate shortId sequentially (starting from 0001)
+    const lastOrder = await Order.findOne({ shortId: { $ne: '' } }).sort({ shortId: -1 });
+    let nextNum = 1;
+    if (lastOrder && lastOrder.shortId) {
+      const lastNum = parseInt(lastOrder.shortId, 10);
+      if (!isNaN(lastNum)) {
+        nextNum = lastNum + 1;
+      }
+    }
+    const shortId = String(nextNum).padStart(4, '0');
+
     const order = new Order({
+      shortId,
       user: req.user.id,
       orderItems: calculatedOrderItems,
       shippingAddress,
