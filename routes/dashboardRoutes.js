@@ -102,26 +102,28 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     const lowStockProducts = await Product.find({ stock: { $lt: 5 } }).select('name stock price') || [];
     const outOfStockProducts = await Product.find({ stock: 0 }).select('name stock price') || [];
 
-    // Calculate total stock quantity and total stock value (based on salePrice / price)
-    const productsList = await Product.find({}) || [];
+    // Calculate total stock quantity and total stock value (based on salePrice / price) - Admin Only
     let totalStockQty = 0;
     let totalStockValue = 0;
 
-    productsList.forEach(p => {
-      if (p.hasVariants && p.variants && p.variants.length > 0) {
-        p.variants.forEach(v => {
-          const qty = Number(v.stock || 0);
-          const valPrice = Number(v.salePrice || v.price || p.salePrice || p.price || 0);
+    if (isAdmin) {
+      const productsList = await Product.find({}) || [];
+      productsList.forEach(p => {
+        if (p.hasVariants && p.variants && p.variants.length > 0) {
+          p.variants.forEach(v => {
+            const qty = Number(v.stock || 0);
+            const valPrice = Number(v.salePrice || v.price || p.salePrice || p.price || 0);
+            totalStockQty += qty;
+            totalStockValue += (qty * valPrice);
+          });
+        } else {
+          const qty = Number(p.stock || 0);
+          const valPrice = Number(p.salePrice || p.price || 0);
           totalStockQty += qty;
           totalStockValue += (qty * valPrice);
-        });
-      } else {
-        const qty = Number(p.stock || 0);
-        const valPrice = Number(p.salePrice || p.price || 0);
-        totalStockQty += qty;
-        totalStockValue += (qty * valPrice);
-      }
-    });
+        }
+      });
+    }
 
     step = 'recent-orders';
     const recentOrders = allOrders.slice(0, 5) || [];
