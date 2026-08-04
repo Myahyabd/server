@@ -198,6 +198,8 @@ const orderSchema = mongoose.Schema(
       enum: [
         'Pending',
         'Confirmed',
+        'Processing',
+        'Shipped',
         'Delivered',
         'Returned',
         'Exchange',
