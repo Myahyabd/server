@@ -612,8 +612,10 @@ router.post('/', protect, async (req, res) => {
 
     // Calculate Delivery Charge
     let deliveryCharge = 0;
-    const delConfig = settings.deliverySettings;
-    if (!isGift) {
+    if (isOffline) {
+      deliveryCharge = req.body.deliveryCharge !== undefined ? (Number(req.body.deliveryCharge) || 0) : 0;
+    } else if (!isGift) {
+      const delConfig = settings.deliverySettings;
       // Check if Free Delivery Rule applies
       let isFreeDelivery = false;
       if (delConfig && delConfig.freeDeliveryEnabled && subtotal >= delConfig.freeDeliveryMinAmount) {
@@ -652,6 +654,11 @@ router.post('/', protect, async (req, res) => {
       }
     }
 
+    let finalDiscount = couponDiscount + referralDiscount;
+    if (isOffline && req.body.discount !== undefined) {
+      finalDiscount = Number(req.body.discount) || 0;
+    }
+
     subtotal = roundMoney(subtotal);
     landedCostTotal = roundMoney(landedCostTotal);
     couponDiscount = roundMoney(couponDiscount);
@@ -661,7 +668,7 @@ router.post('/', protect, async (req, res) => {
     codCharge = roundMoney(codCharge);
 
     // Final Grand Total
-    const finalSubtotal = isGift ? 0 : roundMoney(subtotal - couponDiscount - referralDiscount);
+    const finalSubtotal = isGift ? 0 : roundMoney(subtotal - finalDiscount);
     const totalPrice = roundMoney(finalSubtotal + deliveryCharge + codCharge);
 
     const isModeratorOrder = req.body.isModeratorOrder !== undefined ? req.body.isModeratorOrder : (req.user.role === 'moderator');
@@ -683,7 +690,7 @@ router.post('/', protect, async (req, res) => {
       totalPrice,
       deliveryCharge,
       codCharge,
-      discount: couponDiscount + referralDiscount,
+      discount: finalDiscount,
       couponApplied: couponId,
       couponDiscount,
       referralUsed: refUsedCode,
