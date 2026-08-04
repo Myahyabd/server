@@ -335,6 +335,19 @@ router.put('/profile', protect, async (req, res) => {
       user.phone = req.body.phone;
     }
 
+    if (req.body.email !== undefined) {
+      const emailLower = req.body.email.trim().toLowerCase();
+      if (emailLower) {
+        const existingEmail = await User.findOne({ email: emailLower });
+        if (existingEmail && existingEmail._id.toString() !== user._id.toString()) {
+          return res.status(400).json({ message: 'Email address is already in use' });
+        }
+        user.email = emailLower;
+      } else {
+        user.email = undefined;
+      }
+    }
+
     await user.save();
     res.json({ message: 'Profile updated successfully', user });
   } catch (error) {
