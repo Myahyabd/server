@@ -102,9 +102,10 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     const lowStockProducts = await Product.find({ stock: { $lt: 5 } }).select('name stock price') || [];
     const outOfStockProducts = await Product.find({ stock: 0 }).select('name stock price') || [];
 
-    // Calculate total stock quantity and total stock value (based on salePrice / price) - Admin Only
+    // Calculate total stock quantity, total stock value, and total stock landed cost - Admin Only
     let totalStockQty = 0;
     let totalStockValue = 0;
+    let totalStockLandedCost = 0;
 
     if (isAdmin) {
       const productsList = await Product.find({}) || [];
@@ -113,14 +114,18 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
           p.variants.forEach(v => {
             const qty = Number(v.stock || 0);
             const valPrice = Number(v.salePrice || v.price || p.salePrice || p.price || 0);
+            const landedCostPrice = Number(v.landedCost || v.buyingPrice || p.landedCost || p.buyingPrice || 0);
             totalStockQty += qty;
             totalStockValue += (qty * valPrice);
+            totalStockLandedCost += (qty * landedCostPrice);
           });
         } else {
           const qty = Number(p.stock || 0);
           const valPrice = Number(p.salePrice || p.price || 0);
+          const landedCostPrice = Number(p.landedCost || p.buyingPrice || 0);
           totalStockQty += qty;
           totalStockValue += (qty * valPrice);
+          totalStockLandedCost += (qty * landedCostPrice);
         }
       });
     }
@@ -231,6 +236,7 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       totalProducts,
       totalStockQty,
       totalStockValue,
+      totalStockLandedCost,
       totalUsers,
       lowStockProducts,
       outOfStockProducts,
