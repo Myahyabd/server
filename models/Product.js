@@ -210,6 +210,23 @@ const productSchema = mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+
+    affiliateCommissionType: {
+      type: String,
+      enum: ['Percentage', 'Fixed', 'Default'],
+      default: 'Default',
+    },
+
+    affiliateCommissionValue: {
+      type: Number,
+      default: 0,
+    },
+
+    affiliateImages: [
+      {
+        type: String,
+      },
+    ],
   },
   {
     timestamps: true,

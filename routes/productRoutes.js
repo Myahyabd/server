@@ -506,6 +506,8 @@ router.put(
 
       product.images = req.body.images || product.images;
 
+      product.affiliateImages = req.body.affiliateImages || product.affiliateImages;
+
       product.price = req.body.price ?? product.price;
 
       product.salePrice = req.body.salePrice;

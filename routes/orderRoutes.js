@@ -337,6 +337,48 @@ router.post('/guest/place-order', async (req, res) => {
     const finalSubtotal = isGift ? 0 : roundMoney(subtotal - couponDiscount - referralDiscount);
     const totalPrice = roundMoney(finalSubtotal + deliveryCharge + codCharge);
 
+    // Affiliate tracking integration
+    let isAffiliateOrder = false;
+    let affiliateUser = null;
+    let affiliateCommission = 0;
+
+    const affiliateId = req.body.affiliateId;
+    if (affiliateId && user._id.toString() !== affiliateId) {
+      const affiliate = await User.findById(affiliateId);
+      if (affiliate && affiliate.affiliateStatus === 'approved') {
+        isAffiliateOrder = true;
+        affiliateUser = affiliateId;
+
+        // Calculate commissions for each item in the order
+        let totalAffCommission = 0;
+        for (const item of calculatedOrderItems) {
+          const productObj = await Product.findById(item.product);
+          if (productObj) {
+            let itemComm = 0;
+            const commType = productObj.affiliateCommissionType || 'Default';
+            const commVal = productObj.affiliateCommissionValue || 0;
+
+            if (commType === 'Percentage') {
+              itemComm = (commVal / 100) * (item.price * item.qty);
+            } else if (commType === 'Fixed') {
+              itemComm = commVal * item.qty;
+            } else {
+              // Fallback to global settings
+              const globalType = settings.affiliateSettings?.commissionType || 'Percentage';
+              const globalValue = settings.affiliateSettings?.value || 10;
+              if (globalType === 'Percentage') {
+                itemComm = (globalValue / 100) * (item.price * item.qty);
+              } else {
+                itemComm = globalValue * item.qty;
+              }
+            }
+            totalAffCommission += itemComm;
+          }
+        }
+        affiliateCommission = roundMoney(totalAffCommission);
+      }
+    }
+
     const order = new Order({
       user: user._id,
       orderItems: calculatedOrderItems,
@@ -372,10 +414,36 @@ router.post('/guest/place-order', async (req, res) => {
       status: 'Pending',
       isDelivered: false,
       createdBy: user._id,
-      salesChannel: 'Online'
+      salesChannel: 'Online',
+      isAffiliateOrder,
+      affiliateUser,
+      affiliateCommission,
+      affiliateCommissionStatus: 'Pending'
     });
 
     const createdOrder = await order.save();
+
+    // Mark tracking click converted
+    if (isAffiliateOrder) {
+      try {
+        const AffiliateClick = require('../models/AffiliateClick');
+        const productIds = calculatedOrderItems.map(item => item.product);
+        await AffiliateClick.findOneAndUpdate(
+          {
+            affiliate: affiliateId,
+            product: { $in: productIds },
+            isConverted: false
+          },
+          {
+            isConverted: true,
+            order: createdOrder._id
+          },
+          { sort: { createdAt: -1 } }
+        );
+      } catch (clickErr) {
+        console.error('Failed to link converted affiliate click', clickErr);
+      }
+    }
 
     // Analytics Tracking Integration
     try {
@@ -687,6 +755,48 @@ router.post('/', protect, async (req, res) => {
     }
     const shortId = String(nextNum).padStart(4, '0');
 
+    // Affiliate tracking integration
+    let isAffiliateOrder = false;
+    let affiliateUser = null;
+    let affiliateCommission = 0;
+
+    const affiliateId = req.body.affiliateId;
+    if (affiliateId && (!req.user || req.user.id !== affiliateId)) {
+      const affiliate = await User.findById(affiliateId);
+      if (affiliate && affiliate.affiliateStatus === 'approved') {
+        isAffiliateOrder = true;
+        affiliateUser = affiliateId;
+
+        // Calculate commissions for each item in the order
+        let totalAffCommission = 0;
+        for (const item of calculatedOrderItems) {
+          const productObj = await Product.findById(item.product);
+          if (productObj) {
+            let itemComm = 0;
+            const commType = productObj.affiliateCommissionType || 'Default';
+            const commVal = productObj.affiliateCommissionValue || 0;
+
+            if (commType === 'Percentage') {
+              itemComm = (commVal / 100) * (item.price * item.qty);
+            } else if (commType === 'Fixed') {
+              itemComm = commVal * item.qty;
+            } else {
+              // Fallback to global settings
+              const globalType = settings.affiliateSettings?.commissionType || 'Percentage';
+              const globalValue = settings.affiliateSettings?.value || 10;
+              if (globalType === 'Percentage') {
+                itemComm = (globalValue / 100) * (item.price * item.qty);
+              } else {
+                itemComm = globalValue * item.qty;
+              }
+            }
+            totalAffCommission += itemComm;
+          }
+        }
+        affiliateCommission = roundMoney(totalAffCommission);
+      }
+    }
+
     const order = new Order({
       shortId,
       user: req.user.id,
@@ -728,10 +838,36 @@ router.post('/', protect, async (req, res) => {
       salesChannel: isOffline ? (salesChannel || 'Offline') : 'Online',
       isModeratorOrder,
       moderatorUser: isModeratorOrder ? req.user.id : null,
-      moderatorProfitTotal
+      moderatorProfitTotal,
+      isAffiliateOrder,
+      affiliateUser,
+      affiliateCommission,
+      affiliateCommissionStatus: 'Pending'
     });
 
     const createdOrder = await order.save();
+
+    // Mark tracking click converted
+    if (isAffiliateOrder) {
+      try {
+        const AffiliateClick = require('../models/AffiliateClick');
+        const productIds = calculatedOrderItems.map(item => item.product);
+        await AffiliateClick.findOneAndUpdate(
+          {
+            affiliate: affiliateId,
+            product: { $in: productIds },
+            isConverted: false
+          },
+          {
+            isConverted: true,
+            order: createdOrder._id
+          },
+          { sort: { createdAt: -1 } }
+        );
+      } catch (clickErr) {
+        console.error('Failed to link converted affiliate click', clickErr);
+      }
+    }
 
     // Analytics Tracking Integration
     try {
@@ -977,6 +1113,79 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
           
           owner.markModified('wallet');
           await owner.save();
+        }
+      }
+    }
+    // ===========================================
+    // AFFILIATE COMMISSION TRIGGER
+    // ===========================================
+    if (order.isAffiliateOrder && order.affiliateUser && order.affiliateCommission > 0) {
+      const affiliate = await User.findById(order.affiliateUser);
+      if (affiliate) {
+        if (!affiliate.wallet) {
+          affiliate.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
+        }
+        
+        affiliate.wallet.availableBalance = Number(affiliate.wallet.availableBalance || 0);
+
+        // Transition 1: From Pending to Delivered (Credit Wallet Available Balance)
+        if (status === 'Delivered' && order.affiliateCommissionStatus === 'Pending') {
+          affiliate.wallet.availableBalance += order.affiliateCommission;
+          order.affiliateCommissionStatus = 'Earned';
+
+          await WalletTransaction.create({
+            user: affiliate._id,
+            type: 'Commission',
+            amount: order.affiliateCommission,
+            balanceAfter: affiliate.wallet.availableBalance,
+            status: 'Completed',
+            note: `Affiliate commission earned for Order #${order._id}`,
+            order: order._id
+          });
+          
+          affiliate.markModified('wallet');
+          await affiliate.save();
+        } 
+        // Transition 2: From Earned to Cancelled/Returned/Refunded (Revoke Wallet Available Balance)
+        else if (['Cancelled', 'Returned', 'Refunded'].includes(status) && order.affiliateCommissionStatus === 'Earned') {
+          affiliate.wallet.availableBalance -= order.affiliateCommission;
+          if (affiliate.wallet.availableBalance < 0) affiliate.wallet.availableBalance = 0;
+          order.affiliateCommissionStatus = 'Cancelled';
+
+          await WalletTransaction.create({
+            user: affiliate._id,
+            type: 'Commission',
+            amount: -order.affiliateCommission,
+            balanceAfter: affiliate.wallet.availableBalance,
+            status: 'Completed',
+            note: `Affiliate commission revoked (Order status changed to ${status})`,
+            order: order._id
+          });
+
+          affiliate.markModified('wallet');
+          await affiliate.save();
+        }
+        // Transition 3: From Pending to Cancelled/Returned/Refunded (Cancel pending commission)
+        else if (['Cancelled', 'Returned', 'Refunded'].includes(status) && order.affiliateCommissionStatus === 'Pending') {
+          order.affiliateCommissionStatus = 'Cancelled';
+        }
+        // Transition 4: From Cancelled/Returned/Refunded back to Delivered (Re-credit Wallet Available Balance)
+        else if (status === 'Delivered' && order.affiliateCommissionStatus === 'Cancelled') {
+          affiliate.wallet.availableBalance += order.affiliateCommission;
+          order.affiliateCommissionStatus = 'Earned';
+
+          await WalletTransaction.create({
+            user: affiliate._id,
+            type: 'Commission',
+            amount: order.affiliateCommission,
+            balanceAfter: affiliate.wallet.availableBalance,
+            status: 'Completed',
+            note: `Affiliate commission re-earned for Order #${order._id}`,
+            order: order._id
+          });
+          
+          affiliate.markModified('wallet');
+          await affiliate.save();
         }
       }
     }

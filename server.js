@@ -37,6 +37,8 @@ const referralRoutes = require('./routes/referralRoutes');
 const moderatorRoutes = require('./routes/moderatorRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
+const contactRoutes = require('./routes/contactRoutes');
+const affiliateRoutes = require('./routes/affiliateRoutes');
 
 const app = express();
 
@@ -62,6 +64,44 @@ app.use('/api/dashboard', dashboardRoutes);
 
 app.use('/api/users', userRoutes);
 
+// Dynamic Team API for About Page
+app.get('/api/team', async (req, res) => {
+  try {
+    const User = require('./models/User');
+    const team = await User.find({
+      role: { $in: ['admin', 'moderator'] }
+    }).select('-password -otp -otpExpires -isVerified');
+
+    // Filter to only those who have populated at least a name and position
+    const activeTeam = team.filter(member => member.position && member.name);
+
+    // Sort by role (admin first), then by position priority (Founder, Admin, etc.)
+    activeTeam.sort((a, b) => {
+      const roleA = a.role === 'admin' ? 1 : 2;
+      const roleB = b.role === 'admin' ? 1 : 2;
+      if (roleA !== roleB) return roleA - roleB;
+
+      const posA = (a.position || '').toLowerCase().trim();
+      const posB = (b.position || '').toLowerCase().trim();
+
+      const getPosScore = (pos) => {
+        if (pos.includes('founder')) return 1;
+        if (pos === 'admin') return 2;
+        if (pos.includes('senior admin')) return 3;
+        if (pos.includes('senior moderator')) return 4;
+        if (pos.includes('moderator')) return 5;
+        return 99;
+      };
+
+      return getPosScore(posA) - getPosScore(posB);
+    });
+
+    res.json(activeTeam);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 app.use('/api/expenses', expenseRoutes);
 
 app.use('/api/suppliers', supplierRoutes);
@@ -77,6 +117,8 @@ app.use('/api/referrals', referralRoutes);
 app.use('/api/moderator', moderatorRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/contacts', contactRoutes);
+app.use('/api/affiliates', affiliateRoutes);
 
 // MONGODB
 const connectDB = () => {

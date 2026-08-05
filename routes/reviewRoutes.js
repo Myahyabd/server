@@ -123,35 +123,58 @@ router.get('/summary', async (req, res) => {
   }
 });
 
-// 3. POST A REVIEW (Logged-in User only)
-router.post('/', protect, async (req, res) => {
+// 3. POST A REVIEW (Logged-in or Guest User)
+router.post('/', async (req, res) => {
   try {
-    const { type, product, rating, title, comment, images, storeRatings } = req.body;
+    const { type, product, rating, title, comment, images, storeRatings, reviewerName, reviewerProfilePhoto } = req.body;
 
     if (!rating || !comment) {
-      return res.status(400).json({ message: 'Rating and Comment detailed reviews are required.' });
+      return res.status(400).json({ message: 'Rating and Comment are required.' });
     }
 
-    const isStaff = req.user.role === 'admin' || req.user.role === 'moderator';
+    let user = null;
+    let name = reviewerName || 'Anonymous Guest';
+    let role = 'customer';
+    let photo = reviewerProfilePhoto || '';
+
+    // Check if Authorization header exists to associate review with logged-in user
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const User = require('../models/User');
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const loggedUser = await User.findById(decoded.id).select('-password');
+        if (loggedUser) {
+          user = loggedUser._id;
+          name = loggedUser.name;
+          role = loggedUser.role || 'customer';
+          photo = loggedUser.profilePhoto || photo;
+        }
+      } catch (err) {
+        // Token invalid or expired, fallback as guest
+      }
+    }
+
+    const isStaff = role === 'admin' || role === 'moderator';
     const status = isStaff ? 'Approved' : 'Pending';
 
     const reviewData = {
       type: type || 'Product',
-      reviewerName: (isStaff && req.body.reviewerName) ? req.body.reviewerName : req.user.name,
-      reviewerRole: (isStaff && req.body.reviewerRole) ? req.body.reviewerRole : (req.user.role || 'customer'),
-      reviewerProfilePhoto: (isStaff && req.body.reviewerProfilePhoto) ? req.body.reviewerProfilePhoto : '',
+      reviewerName: name,
+      reviewerRole: role,
+      reviewerProfilePhoto: photo,
       rating,
       title: title || '',
       comment,
       images: images || [],
       status,
-      isFeatured: (isStaff && req.body.isFeatured !== undefined) ? req.body.isFeatured : false
+      isFeatured: false
     };
 
-    if (!isStaff) {
-      reviewData.user = req.user.id;
-    } else if (req.body.user) {
-      reviewData.user = req.body.user;
+    if (user) {
+      reviewData.user = user;
     }
 
     if (type === 'Product') {
@@ -160,7 +183,6 @@ router.post('/', protect, async (req, res) => {
       }
       reviewData.product = product;
     } else {
-      // Store overall ratings
       if (storeRatings) {
         reviewData.storeRatings = storeRatings;
       }
@@ -261,8 +283,25 @@ router.put('/:id/feature', protect, adminOnly, async (req, res) => {
   }
 });
 
-// 8. DELETE A REVIEW (Admin Only)
-router.delete('/:id', protect, adminOnly, async (req, res) => {
+// 8. APPROVE A REVIEW (Admin / Moderator Only)
+router.patch('/:id/approve', protect, adminOrModerator, async (req, res) => {
+  try {
+    const review = await Review.findByIdAndUpdate(
+      req.params.id,
+      { status: 'Approved' },
+      { new: true }
+    );
+    if (!review) {
+      return res.status(404).json({ message: 'Review not found.' });
+    }
+    res.json(review);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// 9. DELETE A REVIEW (Admin / Moderator Only)
+router.delete('/:id', protect, adminOrModerator, async (req, res) => {
   try {
     const review = await Review.findByIdAndDelete(req.params.id);
     if (!review) {

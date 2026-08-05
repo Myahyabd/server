@@ -39,6 +39,11 @@ router.get('/', protect.optionalProtect || protect, async (req, res) => {
           { name: 'bKash', enabled: true, instructions: 'Send money to our bKash personal number.', accountNumber: '01700000000' },
           { name: 'Nagad', enabled: true, instructions: 'Send money to our Nagad personal number.', accountNumber: '01700000000' },
         ],
+        affiliateSettings: {
+          enabled: true,
+          commissionType: 'Percentage',
+          value: 10
+        }
       });
     }
     res.json(settings);
@@ -58,6 +63,7 @@ router.put('/', protect, adminOnly, async (req, res) => {
       settings.codSettings = req.body.codSettings || settings.codSettings;
       settings.referralSettings = req.body.referralSettings || settings.referralSettings;
       settings.paymentMethods = req.body.paymentMethods || settings.paymentMethods;
+      settings.affiliateSettings = req.body.affiliateSettings || settings.affiliateSettings;
     }
     await settings.save();
     res.json(settings);

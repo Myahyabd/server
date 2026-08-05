@@ -33,6 +33,27 @@ const userSchema = new mongoose.Schema({
     default: false,
   },
 
+  affiliateStatus: {
+    type: String,
+    enum: ['none', 'pending', 'approved', 'rejected'],
+    default: 'none'
+  },
+
+  affiliateRegisteredAt: {
+    type: Date,
+    default: null
+  },
+
+  affiliateAddress: {
+    type: String,
+    default: ''
+  },
+
+  affiliateFacebookLink: {
+    type: String,
+    default: ''
+  },
+
   resellerId: {
     type: Number,
     unique: true,

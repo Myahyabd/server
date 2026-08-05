@@ -262,6 +262,24 @@ const orderSchema = mongoose.Schema(
       enum: ['Pending', 'Earned', 'Cancelled'],
       default: 'Pending',
     },
+    isAffiliateOrder: {
+      type: Boolean,
+      default: false,
+    },
+    affiliateUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    affiliateCommission: {
+      type: Number,
+      default: 0,
+    },
+    affiliateCommissionStatus: {
+      type: String,
+      enum: ['Pending', 'Earned', 'Cancelled'],
+      default: 'Pending',
+    },
   },
 
   {

@@ -110,6 +110,21 @@ const systemSettingsSchema = new mongoose.Schema(
         requireScreenshot: { type: Boolean, default: false },
       },
     ],
+    affiliateSettings: {
+      enabled: {
+        type: Boolean,
+        default: true,
+      },
+      commissionType: {
+        type: String,
+        enum: ['Percentage', 'Fixed'],
+        default: 'Percentage',
+      },
+      value: {
+        type: Number,
+        default: 10, // 10%
+      },
+    },
   },
   {
     timestamps: true,
