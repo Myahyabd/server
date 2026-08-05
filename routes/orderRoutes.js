@@ -343,17 +343,27 @@ router.post('/guest/place-order', async (req, res) => {
     let affiliateCommission = 0;
 
     const affiliateId = req.body.affiliateId;
-    if (affiliateId && user._id.toString() !== affiliateId) {
-      const affiliate = await User.findById(affiliateId);
-      if (affiliate && affiliate.affiliateStatus === 'approved') {
-        isAffiliateOrder = true;
-        affiliateUser = affiliateId;
+    console.log(`[Affiliate Debug] Guest checkout: req.body.affiliateId = ${affiliateId}, guest user ID = ${user?._id}`);
 
-        // Calculate commissions for each item in the order
-        let totalAffCommission = 0;
-        for (const item of calculatedOrderItems) {
-          const productObj = await Product.findById(item.product);
-          if (productObj) {
+    if (affiliateId) {
+      if (user && user._id.toString() === affiliateId) {
+        console.log(`[Affiliate Debug] Guest checkout self-referral blocked. Guest matches affiliate.`);
+      } else {
+        const affiliate = await User.findById(affiliateId);
+        if (!affiliate) {
+          console.log(`[Affiliate Debug] Guest checkout affiliate user not found: ${affiliateId}`);
+        } else if (affiliate.affiliateStatus !== 'approved') {
+          console.log(`[Affiliate Debug] Guest checkout affiliate account status is not approved: ${affiliate.affiliateStatus}`);
+        } else {
+          isAffiliateOrder = true;
+          affiliateUser = affiliateId;
+          console.log(`[Affiliate Debug] Guest checkout affiliate verified successfully: ${affiliate.name}`);
+
+          // Calculate commissions for each item in the order
+          let totalAffCommission = 0;
+          for (const item of calculatedOrderItems) {
+            const productObj = await Product.findById(item.product);
+            if (productObj) {
             let itemComm = 0;
             const commType = productObj.affiliateCommissionType || 'Default';
             const commVal = productObj.affiliateCommissionValue || 0;
@@ -761,17 +771,27 @@ router.post('/', protect, async (req, res) => {
     let affiliateCommission = 0;
 
     const affiliateId = req.body.affiliateId;
-    if (affiliateId && (!req.user || req.user.id !== affiliateId)) {
-      const affiliate = await User.findById(affiliateId);
-      if (affiliate && affiliate.affiliateStatus === 'approved') {
-        isAffiliateOrder = true;
-        affiliateUser = affiliateId;
+    console.log(`[Affiliate Debug] Regular checkout: req.body.affiliateId = ${affiliateId}, req.user.id = ${req.user?.id}`);
+    
+    if (affiliateId) {
+      if (req.user && req.user.id === affiliateId) {
+        console.log(`[Affiliate Debug] Self-referral detected and blocked. User cannot refer themselves.`);
+      } else {
+        const affiliate = await User.findById(affiliateId);
+        if (!affiliate) {
+          console.log(`[Affiliate Debug] Affiliate user not found for ID: ${affiliateId}`);
+        } else if (affiliate.affiliateStatus !== 'approved') {
+          console.log(`[Affiliate Debug] Affiliate account status is not approved: ${affiliate.affiliateStatus}`);
+        } else {
+          isAffiliateOrder = true;
+          affiliateUser = affiliateId;
+          console.log(`[Affiliate Debug] Affiliate order verified successfully for affiliate: ${affiliate.name}`);
 
-        // Calculate commissions for each item in the order
-        let totalAffCommission = 0;
-        for (const item of calculatedOrderItems) {
-          const productObj = await Product.findById(item.product);
-          if (productObj) {
+          // Calculate commissions for each item in the order
+          let totalAffCommission = 0;
+          for (const item of calculatedOrderItems) {
+            const productObj = await Product.findById(item.product);
+            if (productObj) {
             let itemComm = 0;
             const commType = productObj.affiliateCommissionType || 'Default';
             const commVal = productObj.affiliateCommissionValue || 0;
