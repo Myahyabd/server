@@ -48,6 +48,10 @@ router.get('/dashboard-stats', protect, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Affiliate status not approved.' });
     }
 
+    const settings = await SystemSettings.findOne();
+    const globalCommissionType = settings?.affiliateSettings?.commissionType || 'Percentage';
+    const globalCommissionValue = settings?.affiliateSettings?.value || 10;
+
     // 1. Total Clicks
     const clickCount = await AffiliateClick.countDocuments({ affiliate: user._id });
 
@@ -82,7 +86,9 @@ router.get('/dashboard-stats', protect, async (req, res) => {
       pendingCommission,
       approvedCommission,
       withdrawnAmount,
-      availableBalance
+      availableBalance,
+      globalCommissionType,
+      globalCommissionValue
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
