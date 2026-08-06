@@ -290,6 +290,25 @@ router.get('/profile', protect, async (req, res) => {
       await user.save();
     }
 
+    // Generate affiliateReferralCode on-the-fly for approved affiliates if missing
+    if (user.affiliateStatus === 'approved' && !user.affiliateReferralCode) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let isUnique = false;
+      let code = '';
+      while (!isUnique) {
+        code = 'AFF-';
+        for (let i = 0; i < 6; i++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        const existing = await User.findOne({ affiliateReferralCode: code });
+        if (!existing) {
+          isUnique = true;
+        }
+      }
+      user.affiliateReferralCode = code;
+      await user.save();
+    }
+
     res.json(user);
   } catch (error) {
     console.error("GET PROFILE ERROR:", error);
