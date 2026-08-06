@@ -72,6 +72,19 @@ const userSchema = new mongoose.Schema({
     default: '',
   },
 
+  affiliateReferralCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    uppercase: true,
+  },
+
+  affiliateReferredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+
   facebookLink: {
     type: String,
     default: '',

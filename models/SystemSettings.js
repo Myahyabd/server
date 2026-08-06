@@ -124,6 +124,14 @@ const systemSettingsSchema = new mongoose.Schema(
         type: Number,
         default: 10, // 10%
       },
+      recruitmentBonusEnabled: {
+        type: Boolean,
+        default: false,
+      },
+      recruitmentBonusAmount: {
+        type: Number,
+        default: 0,
+      },
     },
   },
   {

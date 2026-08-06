@@ -13,7 +13,7 @@ const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
 // 1. APPLY / REGISTER TO BE AN AFFILIATE (Authed Customers)
 router.post('/register', protect, async (req, res) => {
   try {
-    const { address, facebookLink } = req.body;
+    const { address, facebookLink, referredByCode } = req.body;
     if (!address || !address.trim()) {
       return res.status(400).json({ message: 'Address is required.' });
     }
@@ -26,6 +26,21 @@ router.post('/register', protect, async (req, res) => {
     }
     if (user.affiliateStatus === 'pending') {
       return res.status(400).json({ message: 'Your affiliate application is already pending approval.' });
+    }
+
+    // Process referral code
+    if (referredByCode && referredByCode.trim()) {
+      const referrer = await User.findOne({ 
+        affiliateReferralCode: referredByCode.trim().toUpperCase(),
+        affiliateStatus: 'approved'
+      });
+      if (!referrer) {
+        return res.status(400).json({ message: 'Invalid or inactive affiliate referral code.' });
+      }
+      if (referrer._id.toString() === req.user.id) {
+        return res.status(400).json({ message: 'You cannot refer yourself.' });
+      }
+      user.affiliateReferredBy = referrer._id;
     }
 
     user.affiliateStatus = 'pending';
@@ -90,6 +105,24 @@ router.get('/dashboard-stats', protect, async (req, res) => {
       globalCommissionType,
       globalCommissionValue
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET REFERRED AFFILIATES (Authed Affiliates Only)
+router.get('/referred-network', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || user.affiliateStatus !== 'approved') {
+      return res.status(403).json({ message: 'Access denied. Affiliate status not approved.' });
+    }
+
+    const network = await User.find({ affiliateReferredBy: user._id })
+      .select('name phone affiliateStatus affiliateRegisteredAt')
+      .sort({ affiliateRegisteredAt: -1 });
+
+    res.json(network);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -250,7 +283,8 @@ router.get('/clicks', protect, async (req, res) => {
 router.get('/admin/applications', protect, adminOrModerator, async (req, res) => {
   try {
     const affiliates = await User.find({ affiliateStatus: { $ne: 'none' } })
-      .select('name email phone affiliateStatus affiliateRegisteredAt wallet affiliateAddress affiliateFacebookLink')
+      .select('name email phone affiliateStatus affiliateRegisteredAt wallet affiliateAddress affiliateFacebookLink affiliateReferredBy affiliateReferralCode')
+      .populate('affiliateReferredBy', 'name phone affiliateReferralCode')
       .sort({ affiliateRegisteredAt: -1 });
     res.json(affiliates);
   } catch (err) {
@@ -269,7 +303,55 @@ router.put('/admin/applications/:id', protect, adminOrModerator, async (req, res
     const affiliate = await User.findById(req.params.id);
     if (!affiliate) return res.status(404).json({ message: 'User not found.' });
 
+    const oldStatus = affiliate.affiliateStatus;
     affiliate.affiliateStatus = status;
+
+    if (status === 'approved' && oldStatus !== 'approved') {
+      // 1. Generate unique affiliate referral code
+      if (!affiliate.affiliateReferralCode) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let isUnique = false;
+        let code = '';
+        while (!isUnique) {
+          code = 'AFF-';
+          for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          const existing = await User.findOne({ affiliateReferralCode: code });
+          if (!existing) {
+            isUnique = true;
+          }
+        }
+        affiliate.affiliateReferralCode = code;
+      }
+
+      // 2. Process recruitment/referral bonus
+      if (affiliate.affiliateReferredBy) {
+        const referrer = await User.findById(affiliate.affiliateReferredBy);
+        const settings = await SystemSettings.findOne();
+        if (referrer && settings?.affiliateSettings?.recruitmentBonusEnabled && settings?.affiliateSettings?.recruitmentBonusAmount > 0) {
+          const bonus = Number(settings.affiliateSettings.recruitmentBonusAmount);
+          if (!referrer.wallet) {
+            referrer.wallet = { availableBalance: 0, pendingCommission: 0, paidCommission: 0, totalReferralOrders: 0, totalSalesGenerated: 0, totalDiscountGiven: 0 };
+          }
+          referrer.wallet.availableBalance = Number(referrer.wallet.availableBalance || 0) + bonus;
+          referrer.markModified('wallet');
+          await referrer.save();
+
+          // Create Wallet Transaction
+          await WalletTransaction.create({
+            user: referrer._id,
+            type: 'Commission',
+            amount: bonus,
+            balanceAfter: referrer.wallet.availableBalance,
+            status: 'Completed',
+            note: `Affiliate recruitment bonus for referring ${affiliate.name}`,
+            order: null
+          });
+        }
+      }
+    }
+
     await affiliate.save();
 
     res.json({ message: `Affiliate application status updated to ${status}.`, affiliate });
