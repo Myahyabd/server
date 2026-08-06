@@ -388,6 +388,7 @@ router.post('/guest/place-order', async (req, res) => {
         affiliateCommission = roundMoney(totalAffCommission);
       }
     }
+  }
 
     const order = new Order({
       user: user._id,
@@ -816,6 +817,7 @@ router.post('/', protect, async (req, res) => {
         affiliateCommission = roundMoney(totalAffCommission);
       }
     }
+  }
 
     const order = new Order({
       shortId,
