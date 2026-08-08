@@ -94,7 +94,17 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     const expenses = await Expense.find(expenseQuery) || [];
     const totalExpenses = expenses.reduce((acc, item) => acc + (item.amount || 0), 0);
     const salaryExpenses = expenses.filter(e => e && e.category === 'Salary').reduce((acc, item) => acc + (item.amount || 0), 0);
-    const netBenefit = totalProfit - totalExpenses;
+    
+    let totalInventoryLoss = 0;
+    try {
+      const StockAdjustment = require('../models/StockAdjustment');
+      const adjustments = await StockAdjustment.find() || [];
+      totalInventoryLoss = adjustments.reduce((acc, item) => acc + (item.totalLossAmount || 0), 0);
+    } catch (err) {
+      console.error('Failed to calculate stock adjustment loss for dashboard:', err);
+    }
+
+    const netBenefit = totalProfit - totalExpenses - totalInventoryLoss;
 
     step = 'fetch-products-users';
     const totalProducts = await Product.countDocuments() || 0;
@@ -229,6 +239,7 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       totalExpenses,
       totalSalaries: salaryExpenses,
       netBenefit,
+      totalInventoryLoss,
       totalGiftExpense,
       couponDiscount: totalCouponDiscount,
       referralDiscount: totalReferralDiscount,

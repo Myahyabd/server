@@ -39,6 +39,7 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const affiliateRoutes = require('./routes/affiliateRoutes');
+const stockAdjustmentRoutes = require('./routes/stockAdjustmentRoutes');
 
 const app = express();
 
@@ -119,6 +120,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/affiliates', affiliateRoutes);
+app.use('/api/adjustments', stockAdjustmentRoutes);
 
 // MONGODB
 const connectDB = () => {
