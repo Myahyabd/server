@@ -335,7 +335,7 @@ router.get(
       // CATEGORY FILTER
       const categoryFilter = req.query.category
         ? {
-            category: { $regex: new RegExp('(^|,\\s*)' + req.query.category.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '(\\s*,|$)', 'i') }
+            category: { $regex: new RegExp('(^|,)\\s*' + req.query.category.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '\\s*($|,)', 'i') }
           }
         : {};
 
