@@ -175,12 +175,12 @@ const userSchema = new mongoose.Schema({
     default: '',
   },
 
-  linkedinLink: {
+  instagramLink: {
     type: String,
     default: '',
   },
 
-  githubLink: {
+  whatsappNumber: {
     type: String,
     default: '',
   },

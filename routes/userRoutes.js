@@ -335,8 +335,8 @@ router.put('/profile', protect, async (req, res) => {
       'joiningReason',
       'skills',
       'facebookLink',
-      'linkedinLink',
-      'githubLink',
+      'instagramLink',
+      'whatsappNumber',
       'websiteLink',
     ];
 
@@ -393,8 +393,8 @@ router.put('/:id/profile', protect, adminOnly, async (req, res) => {
       'joiningReason',
       'skills',
       'facebookLink',
-      'linkedinLink',
-      'githubLink',
+      'instagramLink',
+      'whatsappNumber',
       'websiteLink',
     ];
 
