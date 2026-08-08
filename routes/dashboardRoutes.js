@@ -143,23 +143,57 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     step = 'recent-orders';
     const recentOrders = allOrders.slice(0, 5) || [];
 
-    step = 'best-selling';
-    const productSalesMap = {};
+    step = 'product-sales-analytics';
+    const allProductsInDb = await Product.find({}).select('name price salePrice landedCost') || [];
+    const productSalesMapAll = {};
+    allProductsInDb.forEach(p => {
+      productSalesMapAll[p._id.toString()] = {
+        id: p._id.toString(),
+        name: p.name,
+        qty: 0,
+        revenue: 0,
+        profit: 0
+      };
+    });
+
     activeOrders.forEach(o => {
       if (!o || !o.orderItems || !Array.isArray(o.orderItems)) return;
       o.orderItems.forEach(item => {
         if (!item || !item.product) return;
         const pId = item.product.toString();
-        if (!productSalesMap[pId]) {
-          productSalesMap[pId] = { name: item.name || 'Unknown Product', qty: 0, revenue: 0 };
+        const itemQty = item.qty || 0;
+        const price = item.price || 0;
+        const buyingCost = item.buyingCost || 0;
+        const revenue = price * itemQty;
+        const profit = revenue - (buyingCost * itemQty);
+
+        if (!productSalesMapAll[pId]) {
+          productSalesMapAll[pId] = { id: pId, name: item.name || 'Unknown Product', qty: 0, revenue: 0, profit: 0 };
         }
-        productSalesMap[pId].qty += item.qty || 0;
-        productSalesMap[pId].revenue += ((item.price || 0) * (item.qty || 0));
+        productSalesMapAll[pId].qty += itemQty;
+        productSalesMapAll[pId].revenue += revenue;
+        productSalesMapAll[pId].profit += profit;
       });
     });
-    const bestSellingProducts = Object.values(productSalesMap)
+
+    const allSalesData = Object.values(productSalesMapAll);
+
+    // Best selling (top sold qty)
+    const bestSellingProducts = [...allSalesData]
+      .filter(p => p.qty > 0)
       .sort((a, b) => b.qty - a.qty)
-      .slice(0, 5);
+      .slice(0, 10);
+
+    // Slow moving / worst selling (including 0 sales)
+    const slowMovingProducts = [...allSalesData]
+      .sort((a, b) => a.qty - b.qty)
+      .slice(0, 10);
+
+    // Most profitable (sorted by generated profit)
+    const mostProfitableProducts = [...allSalesData]
+      .filter(p => p.profit > 0)
+      .sort((a, b) => b.profit - a.profit)
+      .slice(0, 10);
 
     step = 'top-customers';
     const customerMap = {};
@@ -252,6 +286,8 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       lowStockProducts,
       outOfStockProducts,
       bestSellingProducts,
+      slowMovingProducts,
+      mostProfitableProducts,
       topCustomers,
       topModerators,
       recentOrders,
