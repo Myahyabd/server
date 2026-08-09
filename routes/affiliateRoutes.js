@@ -9,6 +9,7 @@ const WalletTransaction = require('../models/WalletTransaction');
 const SystemSettings = require('../models/SystemSettings');
 const protect = require('../middleware/authMiddleware');
 const { adminOnly, adminOrModerator } = require('../middleware/roleMiddleware');
+const AffiliateTaskSubmission = require('../models/AffiliateTaskSubmission');
 
 // 1. APPLY / REGISTER TO BE AN AFFILIATE (Authed Customers)
 router.post('/register', protect, async (req, res) => {
@@ -529,6 +530,134 @@ router.put('/admin/commission-override', protect, adminOnly, async (req, res) =>
     await product.save();
 
     res.json({ message: 'Product affiliate commission override saved successfully.', product });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 15. SUBMIT VIDEO PROMOTION LINK
+router.post('/tasks/submit', protect, async (req, res) => {
+  try {
+    const { videoUrl, taskType } = req.body;
+    if (!videoUrl) {
+      return res.status(400).json({ message: 'Video URL is required.' });
+    }
+
+    const submission = new AffiliateTaskSubmission({
+      userId: req.user._id,
+      taskType: taskType || 'VideoPromotion',
+      videoUrl,
+      coinsReward: 50, // default reward
+      status: 'Pending',
+    });
+
+    await submission.save();
+    res.status(201).json({ message: 'Promotion link submitted successfully for review.', submission });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 16. GET MY SUBMISSIONS
+router.get('/tasks/my-submissions', protect, async (req, res) => {
+  try {
+    const submissions = await AffiliateTaskSubmission.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    res.json(submissions);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 17. CONVERT COINS TO CASH
+router.post('/coins/convert', protect, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const coinsToConvert = Number(amount || 0);
+
+    if (coinsToConvert < 50) {
+      return res.status(400).json({ message: 'Minimum conversion limit is 50 Coins.' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const userCoins = user.wallet?.coins || 0;
+    if (userCoins < coinsToConvert) {
+      return res.status(400).json({ message: 'Insufficient coins balance.' });
+    }
+
+    const cashValue = coinsToConvert;
+
+    if (!user.wallet) user.wallet = {};
+    user.wallet.coins = userCoins - coinsToConvert;
+    user.wallet.availableBalance = (user.wallet.availableBalance || 0) + cashValue;
+    await user.save();
+
+    const transaction = new WalletTransaction({
+      user: user._id,
+      amount: cashValue,
+      type: 'Commission',
+      balanceAfter: user.wallet.availableBalance,
+      status: 'Completed',
+      note: `Converted ${coinsToConvert} Coins to cash balance`,
+    });
+    await transaction.save();
+
+    res.json({
+      message: `Successfully converted ${coinsToConvert} Coins to ৳${cashValue} Cash Balance!`,
+      coins: user.wallet.coins,
+      availableBalance: user.wallet.availableBalance,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 18. GET ALL SUBMISSIONS (Admin/Moderator Only)
+router.get('/admin/tasks/submissions', protect, adminOrModerator, async (req, res) => {
+  try {
+    const submissions = await AffiliateTaskSubmission.find({})
+      .populate('userId', 'name email referralCode phone')
+      .sort({ createdAt: -1 });
+    res.json(submissions);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 19. APPROVE/REJECT SUBMISSION (Admin/Moderator Only)
+router.put('/admin/tasks/submissions/:id', protect, adminOrModerator, async (req, res) => {
+  try {
+    const { status, adminNote, coinsReward } = req.body;
+    if (!['Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be Approved or Rejected.' });
+    }
+
+    const submission = await AffiliateTaskSubmission.findById(req.params.id);
+    if (!submission) return res.status(404).json({ message: 'Submission not found.' });
+
+    if (submission.status !== 'Pending') {
+      return res.status(400).json({ message: 'This submission has already been reviewed.' });
+    }
+
+    submission.status = status;
+    submission.adminNote = adminNote || '';
+    if (coinsReward !== undefined) {
+      submission.coinsReward = Number(coinsReward);
+    }
+
+    await submission.save();
+
+    if (status === 'Approved') {
+      const user = await User.findById(submission.userId);
+      if (user) {
+        if (!user.wallet) user.wallet = {};
+        user.wallet.coins = (user.wallet.coins || 0) + submission.coinsReward;
+        await user.save();
+      }
+    }
+
+    res.json({ message: `Submission was reviewed and ${status} successfully.`, submission });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

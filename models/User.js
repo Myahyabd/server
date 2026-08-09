@@ -195,7 +195,8 @@ const userSchema = new mongoose.Schema({
     paidCommission: { type: Number, default: 0 },
     totalReferralOrders: { type: Number, default: 0 },
     totalSalesGenerated: { type: Number, default: 0 },
-    totalDiscountGiven: { type: Number, default: 0 }
+    totalDiscountGiven: { type: Number, default: 0 },
+    coins: { type: Number, default: 0 }
   }
 });
 
