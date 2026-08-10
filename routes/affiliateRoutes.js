@@ -92,7 +92,18 @@ router.get('/dashboard-stats', protect, async (req, res) => {
     const withdrawnAmount = approvedWithdrawals.reduce((sum, w) => sum + w.amount, 0);
 
     // Available Balance
-    const availableBalance = user.wallet?.availableBalance || 0;
+    let availableBalance = user.wallet?.availableBalance || 0;
+
+    // Auto-check Milestone coins
+    const milestoneTarget = settings?.affiliateSettings?.milestoneSalesTarget || 10;
+    const milestoneReward = settings?.affiliateSettings?.milestoneSalesReward || 100;
+
+    if (successfulOrders >= milestoneTarget && !user.wallet?.milestoneCoinsClaimed) {
+      if (!user.wallet) user.wallet = {};
+      user.wallet.coins = (user.wallet.coins || 0) + milestoneReward;
+      user.wallet.milestoneCoinsClaimed = true;
+      await user.save();
+    }
 
     res.json({
       clickCount,
@@ -104,7 +115,12 @@ router.get('/dashboard-stats', protect, async (req, res) => {
       withdrawnAmount,
       availableBalance,
       globalCommissionType,
-      globalCommissionValue
+      globalCommissionValue,
+      coinConversionRate: settings?.affiliateSettings?.coinConversionRate || 1,
+      videoPromotionReward: settings?.affiliateSettings?.videoPromotionReward || 50,
+      socialShareReward: settings?.affiliateSettings?.socialShareReward || 10,
+      milestoneSalesTarget: settings?.affiliateSettings?.milestoneSalesTarget || 10,
+      milestoneSalesReward: settings?.affiliateSettings?.milestoneSalesReward || 100
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -483,6 +499,7 @@ router.get('/admin/reports', protect, adminOnly, async (req, res) => {
 
     affiliateOrders.forEach(order => {
       order.orderItems.forEach(item => {
+        if (!item.product) return;
         const prodId = item.product.toString();
         if (!productSalesMap[prodId]) {
           productSalesMap[prodId] = {
@@ -498,7 +515,7 @@ router.get('/admin/reports', protect, adminOnly, async (req, res) => {
 
     const topSellingProducts = Object.values(productSalesMap)
       .sort((a, b) => b.qty - a.qty)
-      .limit(10);
+      .slice(0, 10);
 
     res.json({
       topAffiliates,
@@ -543,11 +560,14 @@ router.post('/tasks/submit', protect, async (req, res) => {
       return res.status(400).json({ message: 'Video URL is required.' });
     }
 
+    const settings = await SystemSettings.findOne();
+    const defaultReward = settings?.affiliateSettings?.videoPromotionReward || 50;
+
     const submission = new AffiliateTaskSubmission({
       userId: req.user._id,
       taskType: taskType || 'VideoPromotion',
       videoUrl,
-      coinsReward: 50, // default reward
+      coinsReward: defaultReward,
       status: 'Pending',
     });
 
@@ -586,7 +606,9 @@ router.post('/coins/convert', protect, async (req, res) => {
       return res.status(400).json({ message: 'Insufficient coins balance.' });
     }
 
-    const cashValue = coinsToConvert;
+    const settings = await SystemSettings.findOne();
+    const rate = settings?.affiliateSettings?.coinConversionRate || 1;
+    const cashValue = coinsToConvert * rate;
 
     if (!user.wallet) user.wallet = {};
     user.wallet.coins = userCoins - coinsToConvert;
@@ -658,6 +680,36 @@ router.put('/admin/tasks/submissions/:id', protect, adminOrModerator, async (req
     }
 
     res.json({ message: `Submission was reviewed and ${status} successfully.`, submission });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 18. AWARD COINS FOR SOCIAL SHARING
+router.post('/tasks/social-share', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const now = new Date();
+    const lastShared = user.wallet?.lastSocialShareDate;
+    
+    if (lastShared && (now - new Date(lastShared)) < 24 * 60 * 60 * 1000) {
+      return res.status(400).json({ message: 'You can only earn sharing coins once every 24 hours.' });
+    }
+
+    const settings = await SystemSettings.findOne();
+    const shareReward = settings?.affiliateSettings?.socialShareReward || 10;
+
+    if (!user.wallet) user.wallet = {};
+    user.wallet.coins = (user.wallet.coins || 0) + shareReward;
+    user.wallet.lastSocialShareDate = now;
+    await user.save();
+
+    res.json({ 
+      message: `Congratulations! You earned 🪙 ${shareReward} Coins.`, 
+      coins: user.wallet.coins 
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

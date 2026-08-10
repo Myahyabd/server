@@ -132,6 +132,26 @@ const systemSettingsSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+      coinConversionRate: {
+        type: Number,
+        default: 1,
+      },
+      videoPromotionReward: {
+        type: Number,
+        default: 50,
+      },
+      socialShareReward: {
+        type: Number,
+        default: 10,
+      },
+      milestoneSalesTarget: {
+        type: Number,
+        default: 10,
+      },
+      milestoneSalesReward: {
+        type: Number,
+        default: 100,
+      },
     },
   },
   {

@@ -196,7 +196,9 @@ const userSchema = new mongoose.Schema({
     totalReferralOrders: { type: Number, default: 0 },
     totalSalesGenerated: { type: Number, default: 0 },
     totalDiscountGiven: { type: Number, default: 0 },
-    coins: { type: Number, default: 0 }
+    coins: { type: Number, default: 0 },
+    milestoneCoinsClaimed: { type: Boolean, default: false },
+    lastSocialShareDate: { type: Date }
   }
 });
 
