@@ -379,6 +379,95 @@ router.get(
             ]
           };
 
+      // BEST SELLING SORT OPTION
+      if (req.query.sort === 'best-selling') {
+        const Order = require('../models/Order');
+        const salesData = await Order.aggregate([
+          { $match: { status: { $ne: 'Cancelled' } } },
+          { $unwind: '$orderItems' },
+          {
+            $group: {
+              _id: '$orderItems.product',
+              totalSold: { $sum: '$orderItems.qty' }
+            }
+          },
+          { $sort: { totalSold: -1 } }
+        ]);
+
+        const soldProductIds = salesData.map(item => item._id ? item._id.toString() : '');
+
+        // Fetch all matching products
+        const matchingProducts = await Product.find({
+          ...keyword,
+          ...categoryFilter,
+          ...priceFilter,
+          ...stockFilter,
+          ...priceValidationFilter,
+        });
+
+        // Map by ID
+        const productMap = {};
+        matchingProducts.forEach(p => {
+          productMap[p._id.toString()] = p;
+        });
+
+        // Order them by sales count
+        const sortedProducts = [];
+        soldProductIds.forEach(id => {
+          if (id && productMap[id]) {
+            sortedProducts.push(productMap[id]);
+            delete productMap[id];
+          }
+        });
+
+        // Append remaining products sorted by createdAt desc
+        const remainingProducts = Object.values(productMap).sort((a, b) => b.createdAt - a.createdAt);
+        const allSorted = [...sortedProducts, ...remainingProducts];
+
+        // Pagination
+        const nopage = req.query.nopage === 'true' || isAdminPanel;
+        const pageSize = 12;
+        const page = Number(req.query.page) || 1;
+
+        let paginatedProducts = allSorted;
+        if (!nopage) {
+          paginatedProducts = allSorted.slice((page - 1) * pageSize, page * pageSize);
+        }
+
+        const sanitizedProducts = paginatedProducts.map(p => {
+          const pObj = p.toObject();
+          if (!isStaff) {
+            delete pObj.moderatorPrice;
+            delete pObj.buyingPrice;
+            delete pObj.landedCost;
+            if (pObj.variants) {
+              pObj.variants.forEach(v => {
+                delete v.moderatorPrice;
+                delete v.buyingPrice;
+                delete v.landedCost;
+              });
+            }
+          }
+          const isReseller = req.user && req.user.role === 'reseller';
+          if (!isStaff && !isReseller) {
+            delete pObj.resellerPrice;
+            if (pObj.variants) {
+              pObj.variants.forEach(v => {
+                delete v.resellerPrice;
+              });
+            }
+          }
+          return pObj;
+        });
+
+        return res.json({
+          products: sanitizedProducts,
+          page,
+          pages: Math.ceil(allSorted.length / pageSize),
+        });
+      }
+
+
       // PAGINATION
       const nopage = req.query.nopage === 'true' || isAdminPanel;
       const pageSize = 12;

@@ -62,7 +62,6 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/upload', uploadRoutes);
 
 app.use('/api/dashboard', dashboardRoutes);
-
 app.use('/api/users', userRoutes);
 
 // Dynamic Team API for About Page

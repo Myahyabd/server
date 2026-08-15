@@ -233,7 +233,7 @@ const orderSchema = mongoose.Schema(
 
     salesChannel: {
       type: String,
-      enum: ['Online', 'Facebook', 'Offline'],
+      enum: ['Online', 'Facebook', 'Offline', 'TikTok', 'WhatsApp', 'YouTube', 'Instagram'],
       default: 'Online',
     },
 
