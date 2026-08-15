@@ -405,6 +405,10 @@ router.get(
             ]
           };
 
+      const isBundleFilter = req.query.isBundle !== undefined
+        ? { isBundle: req.query.isBundle === 'true' }
+        : {};
+
       // BEST SELLING SORT OPTION
       if (req.query.sort === 'best-selling') {
         const Order = require('../models/Order');
@@ -429,6 +433,7 @@ router.get(
           ...priceFilter,
           ...stockFilter,
           ...priceValidationFilter,
+          ...isBundleFilter,
         }).populate('bundleItems.product');
 
         // Map by ID
@@ -506,6 +511,7 @@ router.get(
         ...priceFilter,
         ...stockFilter,
         ...priceValidationFilter,
+        ...isBundleFilter,
       });
 
       // PRODUCTS
@@ -515,6 +521,7 @@ router.get(
         ...priceFilter,
         ...stockFilter,
         ...priceValidationFilter,
+        ...isBundleFilter,
       }).populate('bundleItems.product');
 
       if (!nopage) {
