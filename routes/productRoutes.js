@@ -406,7 +406,7 @@ router.get(
           };
 
       const isBundleFilter = req.query.isBundle !== undefined
-        ? { isBundle: req.query.isBundle === 'true' }
+        ? (req.query.isBundle === 'true' ? { isBundle: true } : { isBundle: { $ne: true } })
         : {};
 
       // BEST SELLING SORT OPTION
