@@ -8,6 +8,32 @@ const protect = require('../middleware/authMiddleware');
 
 const { adminOrModerator, adminOnly } = require('../middleware/roleMiddleware');
 
+const calculateBundleStockFromObj = (pObj) => {
+  if (pObj.isBundle && pObj.bundleItems && pObj.bundleItems.length > 0) {
+    let minStock = Infinity;
+    for (const item of pObj.bundleItems) {
+      const compProduct = item.product;
+      if (!compProduct) {
+        minStock = 0;
+        break;
+      }
+      let compStock = 0;
+      if (item.variant) {
+        const variant = compProduct.variants && compProduct.variants.find(v => v.name === item.variant);
+        compStock = variant ? (variant.stock || 0) : 0;
+      } else {
+        compStock = compProduct.stock || 0;
+      }
+      const possibleBundles = Math.floor(compStock / (item.qty || 1));
+      if (possibleBundles < minStock) {
+        minStock = possibleBundles;
+      }
+    }
+    pObj.stock = minStock === Infinity ? 0 : minStock;
+  }
+  return pObj;
+};
+
 // ==============================
 // ADD PRODUCT
 // ==============================
@@ -245,7 +271,7 @@ router.get(
 
   async (req, res) => {
     try {
-      const product = await Product.findById(req.params.id);
+      const product = await Product.findById(req.params.id).populate('bundleItems.product');
 
       if (!product) {
         return res.status(404).json({
@@ -263,7 +289,7 @@ router.get(
         });
       }
 
-      const productObj = product.toObject();
+      const productObj = calculateBundleStockFromObj(product.toObject());
 
       if (!isStaff) {
         delete productObj.moderatorPrice;
@@ -403,7 +429,7 @@ router.get(
           ...priceFilter,
           ...stockFilter,
           ...priceValidationFilter,
-        });
+        }).populate('bundleItems.product');
 
         // Map by ID
         const productMap = {};
@@ -435,7 +461,7 @@ router.get(
         }
 
         const sanitizedProducts = paginatedProducts.map(p => {
-          const pObj = p.toObject();
+          const pObj = calculateBundleStockFromObj(p.toObject());
           if (!isStaff) {
             delete pObj.moderatorPrice;
             delete pObj.buyingPrice;
@@ -489,7 +515,7 @@ router.get(
         ...priceFilter,
         ...stockFilter,
         ...priceValidationFilter,
-      });
+      }).populate('bundleItems.product');
 
       if (!nopage) {
         query = query.limit(pageSize).skip(pageSize * (page - 1));
@@ -500,7 +526,7 @@ router.get(
       });
 
       const sanitizedProducts = products.map(p => {
-        const pObj = p.toObject();
+        const pObj = calculateBundleStockFromObj(p.toObject());
         if (!isStaff) {
           delete pObj.moderatorPrice;
           delete pObj.buyingPrice;
@@ -619,6 +645,9 @@ router.put(
       product.hasVariants = req.body.hasVariants ?? product.hasVariants;
 
       product.variants = req.body.variants || product.variants;
+
+      product.isBundle = req.body.isBundle ?? product.isBundle;
+      product.bundleItems = req.body.bundleItems ?? product.bundleItems;
 
       const updatedProduct = await product.save();
 

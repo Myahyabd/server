@@ -24,36 +24,72 @@ const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
       const product = await Product.findById(item.product);
       if (!product) continue;
       
-      let stockBefore = 0;
-      if (item.variant) {
-        const variant = product.variants && product.variants.find(v => v.name === item.variant);
-        if (variant) {
-          stockBefore = variant.stock || 0;
-          variant.stock = (variant.stock || 0) + (item.qty || 0);
+      if (product.isBundle) {
+        for (const bundleItem of product.bundleItems) {
+          const compProduct = await Product.findById(bundleItem.product);
+          if (!compProduct) continue;
+          
+          const restoreQty = (bundleItem.qty || 1) * (item.qty || 1);
+          let stockBefore = 0;
+          
+          if (bundleItem.variant) {
+            const variant = compProduct.variants && compProduct.variants.find(v => v.name === bundleItem.variant);
+            if (variant) {
+              stockBefore = variant.stock || 0;
+              variant.stock = (variant.stock || 0) + restoreQty;
+            }
+          } else {
+            stockBefore = compProduct.stock || 0;
+            compProduct.stock = (compProduct.stock || 0) + restoreQty;
+          }
+          
+          compProduct.markModified('variants');
+          await compProduct.save();
+          
+          const stockAfter = bundleItem.variant 
+            ? ((compProduct.variants && compProduct.variants.find(v => v.name === bundleItem.variant)?.stock) ?? compProduct.stock ?? 0)
+            : (compProduct.stock ?? 0);
+
+          await StockHistory.create({
+            product: compProduct._id,
+            action: 'ORDER_RETURNED',
+            quantity: restoreQty,
+            stockBefore: stockBefore || 0,
+            stockAfter: stockAfter || 0,
+            note: `Bundle Component Restored: Component in bundle ${product.name} (Order ${order._id} status changed from ${oldStatus} to ${newStatus})`
+          });
+        }
+      } else {
+        let stockBefore = 0;
+        if (item.variant) {
+          const variant = product.variants && product.variants.find(v => v.name === item.variant);
+          if (variant) {
+            stockBefore = variant.stock || 0;
+            variant.stock = (variant.stock || 0) + (item.qty || 0);
+          } else {
+            stockBefore = product.stock || 0;
+            product.stock = (product.stock || 0) + (item.qty || 0);
+          }
         } else {
           stockBefore = product.stock || 0;
           product.stock = (product.stock || 0) + (item.qty || 0);
         }
-      } else {
-        stockBefore = product.stock || 0;
-        product.stock = (product.stock || 0) + (item.qty || 0);
+        product.markModified('variants');
+        await product.save();
+
+        const stockAfter = item.variant 
+          ? ((product.variants && product.variants.find(v => v.name === item.variant)?.stock) ?? product.stock ?? 0)
+          : (product.stock ?? 0);
+
+        await StockHistory.create({
+          product: item.product,
+          action: 'ORDER_RETURNED',
+          quantity: item.qty || 0,
+          stockBefore: stockBefore || 0,
+          stockAfter: stockAfter || 0,
+          note: `Order ${order._id} status changed from ${oldStatus} to ${newStatus}`
+        });
       }
-      product.markModified('variants');
-      await product.save();
-
-      // Log stock history
-      const stockAfter = item.variant 
-        ? ((product.variants && product.variants.find(v => v.name === item.variant)?.stock) ?? product.stock ?? 0)
-        : (product.stock ?? 0);
-
-      await StockHistory.create({
-        product: item.product,
-        action: 'ORDER_RETURNED',
-        quantity: item.qty || 0,
-        stockBefore: stockBefore || 0,
-        stockAfter: stockAfter || 0,
-        note: `Order ${order._id} status changed from ${oldStatus} to ${newStatus}`
-      });
     }
   } else if (wasRestored && !isRestoredNow) {
     // Deduct items from stock again (e.g. from Cancelled to Confirmed)
@@ -61,36 +97,72 @@ const handleStockForStatusChange = async (order, oldStatus, newStatus) => {
       const product = await Product.findById(item.product);
       if (!product) continue;
       
-      let stockBefore = 0;
-      if (item.variant) {
-        const variant = product.variants && product.variants.find(v => v.name === item.variant);
-        if (variant) {
-          stockBefore = variant.stock || 0;
-          variant.stock = (variant.stock || 0) - (item.qty || 0);
+      if (product.isBundle) {
+        for (const bundleItem of product.bundleItems) {
+          const compProduct = await Product.findById(bundleItem.product);
+          if (!compProduct) continue;
+          
+          const deductQty = (bundleItem.qty || 1) * (item.qty || 1);
+          let stockBefore = 0;
+          
+          if (bundleItem.variant) {
+            const variant = compProduct.variants && compProduct.variants.find(v => v.name === bundleItem.variant);
+            if (variant) {
+              stockBefore = variant.stock || 0;
+              variant.stock = (variant.stock || 0) - deductQty;
+            }
+          } else {
+            stockBefore = compProduct.stock || 0;
+            compProduct.stock = (compProduct.stock || 0) - deductQty;
+          }
+          
+          compProduct.markModified('variants');
+          await compProduct.save();
+          
+          const stockAfter = bundleItem.variant 
+            ? ((compProduct.variants && compProduct.variants.find(v => v.name === bundleItem.variant)?.stock) ?? compProduct.stock ?? 0)
+            : (compProduct.stock ?? 0);
+
+          await StockHistory.create({
+            product: compProduct._id,
+            action: 'ORDER_CREATED',
+            quantity: deductQty,
+            stockBefore: stockBefore || 0,
+            stockAfter: stockAfter || 0,
+            note: `Bundle Component Deducted: Component in bundle ${product.name} (Order ${order._id} status changed from ${oldStatus} to ${newStatus})`
+          });
+        }
+      } else {
+        let stockBefore = 0;
+        if (item.variant) {
+          const variant = product.variants && product.variants.find(v => v.name === item.variant);
+          if (variant) {
+            stockBefore = variant.stock || 0;
+            variant.stock = (variant.stock || 0) - (item.qty || 0);
+          } else {
+            stockBefore = product.stock || 0;
+            product.stock = (product.stock || 0) - (item.qty || 0);
+          }
         } else {
           stockBefore = product.stock || 0;
           product.stock = (product.stock || 0) - (item.qty || 0);
         }
-      } else {
-        stockBefore = product.stock || 0;
-        product.stock = (product.stock || 0) - (item.qty || 0);
+        product.markModified('variants');
+        await product.save();
+
+        const stockAfter = item.variant 
+          ? ((product.variants && product.variants.find(v => v.name === item.variant)?.stock) ?? product.stock ?? 0)
+          : (product.stock ?? 0);
+
+        await StockHistory.create({
+          product: item.product,
+          action: 'ORDER_CREATED',
+          quantity: item.qty || 0,
+          stockBefore: stockBefore || 0,
+          stockAfter: stockAfter || 0,
+          note: `Order ${order._id} status changed from ${oldStatus} to ${newStatus}`
+        });
       }
-      product.markModified('variants');
-      await product.save();
-
-      // Log stock history
-      const stockAfter = item.variant 
-        ? ((product.variants && product.variants.find(v => v.name === item.variant)?.stock) ?? product.stock ?? 0)
-        : (product.stock ?? 0);
-
-      await StockHistory.create({
-        product: item.product,
-        action: 'ORDER_CREATED',
-        quantity: item.qty || 0,
-        stockBefore: stockBefore || 0,
-        stockAfter: stockAfter || 0,
-        note: `Order ${order._id} status changed from ${oldStatus} to ${newStatus}`
-      });
     }
   }
 };
@@ -168,7 +240,7 @@ router.post('/guest/place-order', async (req, res) => {
     let landedCostTotal = 0;
 
     for (const item of orderItems) {
-      const product = await Product.findById(item.product);
+      const product = await Product.findById(item.product).populate('bundleItems.product');
       if (!product) {
         return res.status(404).json({ message: `Product ${item.name} not found` });
       }
@@ -176,7 +248,38 @@ router.post('/guest/place-order', async (req, res) => {
       let costPrice = 0;
       let sellPrice = item.price;
 
-      if (item.variant) {
+      if (product.isBundle) {
+        let bundleCostPrice = 0;
+        for (const bundleItem of product.bundleItems) {
+          const compProduct = bundleItem.product;
+          if (!compProduct) {
+            return res.status(404).json({ message: `Component product not found in bundle ${product.name}` });
+          }
+          const requiredQty = (bundleItem.qty || 1) * item.qty;
+          let compCost = 0;
+          if (bundleItem.variant) {
+            const variant = compProduct.variants && compProduct.variants.find(v => v.name === bundleItem.variant);
+            if (!variant) {
+              return res.status(400).json({ message: `Variant ${bundleItem.variant} of component ${compProduct.name} not found for bundle ${product.name}` });
+            }
+            if (variant.stock < requiredQty) {
+              return res.status(400).json({ message: `Component ${compProduct.name} (${variant.name}) is out of stock` });
+            }
+            compCost = variant.landedCost || variant.buyingPrice || 0;
+            variant.stock -= requiredQty;
+          } else {
+            if (compProduct.stock < requiredQty) {
+              return res.status(400).json({ message: `Component ${compProduct.name} is out of stock` });
+            }
+            compCost = compProduct.landedCost || compProduct.buyingPrice || 0;
+            compProduct.stock -= requiredQty;
+          }
+          compProduct.markModified('variants');
+          await compProduct.save();
+          bundleCostPrice += compCost * (bundleItem.qty || 1);
+        }
+        costPrice = bundleCostPrice;
+      } else if (item.variant) {
         const variant = product.variants.find(v => v.name === item.variant);
         if (!variant) {
           return res.status(400).json({ message: `Variant ${item.variant} not found for ${product.name}` });
@@ -187,6 +290,8 @@ router.post('/guest/place-order', async (req, res) => {
         
         costPrice = variant.landedCost || variant.buyingPrice || 0;
         variant.stock -= item.qty;
+        product.markModified('variants');
+        await product.save();
       } else {
         if (product.stock < item.qty) {
           return res.status(400).json({ message: `${product.name} is out of stock` });
@@ -194,10 +299,8 @@ router.post('/guest/place-order', async (req, res) => {
         
         costPrice = product.landedCost || product.buyingPrice || 0;
         product.stock -= item.qty;
+        await product.save();
       }
-
-      product.markModified('variants');
-      await product.save();
 
       subtotal += roundMoney(sellPrice * item.qty);
       landedCostTotal += roundMoney(costPrice * item.qty);
@@ -535,7 +638,7 @@ router.post('/', protect, async (req, res) => {
     let landedCostTotal = 0;
 
     for (const item of orderItems) {
-      const product = await Product.findById(item.product);
+      const product = await Product.findById(item.product).populate('bundleItems.product');
       if (!product) {
         return res.status(404).json({ message: `Product ${item.name} not found` });
       }
@@ -573,7 +676,38 @@ router.post('/', protect, async (req, res) => {
         }
       }
 
-      if (item.variant) {
+      if (product.isBundle) {
+        let bundleCostPrice = 0;
+        for (const bundleItem of product.bundleItems) {
+          const compProduct = bundleItem.product;
+          if (!compProduct) {
+            return res.status(404).json({ message: `Component product not found in bundle ${product.name}` });
+          }
+          const requiredQty = (bundleItem.qty || 1) * item.qty;
+          let compCost = 0;
+          if (bundleItem.variant) {
+            const variant = compProduct.variants && compProduct.variants.find(v => v.name === bundleItem.variant);
+            if (!variant) {
+              return res.status(400).json({ message: `Variant ${bundleItem.variant} of component ${compProduct.name} not found for bundle ${product.name}` });
+            }
+            if (variant.stock < requiredQty) {
+              return res.status(400).json({ message: `Component ${compProduct.name} (${variant.name}) is out of stock` });
+            }
+            compCost = variant.landedCost || variant.buyingPrice || 0;
+            variant.stock -= requiredQty;
+          } else {
+            if (compProduct.stock < requiredQty) {
+              return res.status(400).json({ message: `Component ${compProduct.name} is out of stock` });
+            }
+            compCost = compProduct.landedCost || compProduct.buyingPrice || 0;
+            compProduct.stock -= requiredQty;
+          }
+          compProduct.markModified('variants');
+          await compProduct.save();
+          bundleCostPrice += compCost * (bundleItem.qty || 1);
+        }
+        costPrice = bundleCostPrice;
+      } else if (item.variant) {
         const variant = product.variants.find(v => v.name === item.variant);
         if (!variant) {
           return res.status(400).json({ message: `Variant ${item.variant} not found for ${product.name}` });
@@ -583,22 +717,18 @@ router.post('/', protect, async (req, res) => {
         }
         
         costPrice = variant.landedCost || variant.buyingPrice || 0;
-        
-        // Deduct stock if active
         variant.stock -= item.qty;
+        product.markModified('variants');
+        await product.save();
       } else {
         if (product.stock < item.qty) {
           return res.status(400).json({ message: `${product.name} is out of stock` });
         }
         
         costPrice = product.landedCost || product.buyingPrice || 0;
-        
-        // Deduct stock
         product.stock -= item.qty;
+        await product.save();
       }
-
-      product.markModified('variants');
-      await product.save();
 
       subtotal += roundMoney(sellPrice * item.qty);
       landedCostTotal += roundMoney(costPrice * item.qty);

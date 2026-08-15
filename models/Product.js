@@ -193,6 +193,29 @@ const productSchema = mongoose.Schema(
 
     variants: [variantSchema],
 
+    // ===== BUNDLES / COMBINED OFFERS =====
+    isBundle: {
+      type: Boolean,
+      default: false,
+    },
+
+    bundleItems: [
+      {
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Product',
+        },
+        variant: {
+          type: String,
+          default: '',
+        },
+        qty: {
+          type: Number,
+          default: 1,
+        },
+      },
+    ],
+
     // ===== REVIEWS =====
     reviews: [reviewSchema],
 
