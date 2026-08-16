@@ -107,6 +107,19 @@ const orderSchema = mongoose.Schema(
       enum: ['Unpaid', 'Paid'],
       default: 'Unpaid',
     },
+    amountPaid: {
+      type: Number,
+      default: 0,
+    },
+    dueAmount: {
+      type: Number,
+      default: 0,
+    },
+    dueStatus: {
+      type: String,
+      enum: ['Paid', 'Due'],
+      default: 'Paid',
+    },
 
     paymentDetails: {
       senderMobile: { type: String, default: '' },

@@ -949,6 +949,30 @@ router.post('/', protect, async (req, res) => {
     }
   }
 
+    let orderAmountPaid = 0;
+    let orderDueAmount = 0;
+    let orderDueStatus = 'Paid';
+    let orderPaymentStatus = 'Unpaid';
+
+    if (isOffline) {
+      if (req.body.amountPaid !== undefined) {
+        orderAmountPaid = Number(req.body.amountPaid) || 0;
+        orderDueAmount = Math.max(0, totalPrice - orderAmountPaid);
+        orderDueStatus = orderDueAmount > 0 ? 'Due' : 'Paid';
+        orderPaymentStatus = orderDueAmount > 0 ? 'Unpaid' : 'Paid';
+      } else {
+        orderAmountPaid = totalPrice;
+        orderDueAmount = 0;
+        orderDueStatus = 'Paid';
+        orderPaymentStatus = 'Paid';
+      }
+    } else {
+      orderAmountPaid = 0;
+      orderDueAmount = 0;
+      orderDueStatus = 'Paid';
+      orderPaymentStatus = 'Unpaid';
+    }
+
     const order = new Order({
       shortId,
       user: req.user.id,
@@ -960,7 +984,10 @@ router.post('/', protect, async (req, res) => {
         transactionId: paymentDetails?.transactionId || '',
         screenshot: paymentDetails?.screenshot || ''
       },
-      paymentStatus: isOffline ? 'Paid' : 'Unpaid',
+      paymentStatus: orderPaymentStatus,
+      amountPaid: orderAmountPaid,
+      dueAmount: orderDueAmount,
+      dueStatus: orderDueStatus,
       totalPrice,
       deliveryCharge,
       codCharge,
@@ -1417,6 +1444,90 @@ router.put('/:id/status', protect, adminOrModerator, async (req, res) => {
 
     await order.save();
     res.json({ message: 'Order status updated successfully', order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ===================================
+// PAY DUE AMOUNT
+// ===================================
+router.patch('/:id/pay-due', protect, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const paymentAmount = Number(req.body.paymentAmount) || 0;
+    if (paymentAmount <= 0) {
+      return res.status(400).json({ message: 'Payment amount must be greater than zero' });
+    }
+
+    order.amountPaid += paymentAmount;
+    order.dueAmount = Math.max(0, order.totalPrice - order.amountPaid);
+
+    if (order.dueAmount === 0) {
+      order.dueStatus = 'Paid';
+      order.paymentStatus = 'Paid';
+    }
+
+    await order.save();
+    res.json({ message: 'Due payment successfully recorded', order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ===================================
+// GET CUSTOMERS DIRECTORY (AGGREGATED)
+// ===================================
+router.get('/customers/list', protect, async (req, res) => {
+  try {
+    const customers = await Order.aggregate([
+      {
+        $group: {
+          _id: "$shippingAddress.phone",
+          fullName: { $first: "$shippingAddress.fullName" },
+          alternativePhone: { $first: "$shippingAddress.alternativePhone" },
+          address: { $first: "$shippingAddress.address" },
+          thana: { $first: "$shippingAddress.thana" },
+          district: { $first: "$shippingAddress.district" },
+          division: { $first: "$shippingAddress.division" },
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: "$totalPrice" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          phone: "$_id",
+          fullName: 1,
+          alternativePhone: 1,
+          address: 1,
+          thana: 1,
+          district: 1,
+          division: 1,
+          totalOrders: 1,
+          totalSpent: 1
+        }
+      },
+      {
+        $sort: { fullName: 1 }
+      }
+    ]);
+    res.json(customers);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ===================================
+// GET CUSTOMER ORDER HISTORY
+// ===================================
+router.get('/customers/:phone/history', protect, async (req, res) => {
+  try {
+    const orders = await Order.find({ "shippingAddress.phone": req.params.phone })
+      .sort({ createdAt: -1 });
+    res.json(orders);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
