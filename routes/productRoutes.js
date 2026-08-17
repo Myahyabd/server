@@ -753,6 +753,8 @@ router.get('/robots/txt', async (req, res) => {
 
   res.header('Content-Type', 'text/plain');
   res.send(robots);
+});
+
 // ===================================
 // GET EBOOK DETAILS & VERIFY ACCESS
 // ===================================
