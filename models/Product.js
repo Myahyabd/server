@@ -267,7 +267,13 @@ const productSchema = mongoose.Schema(
     chapters: [
       {
         title: { type: String, required: true },
-        content: { type: String, required: true },
+        content: { type: String, default: '' },
+        subChapters: [
+          {
+            title: { type: String, required: true },
+            content: { type: String, required: true },
+          },
+        ],
       },
     ],
   },
