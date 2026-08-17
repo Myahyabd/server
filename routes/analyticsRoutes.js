@@ -114,15 +114,20 @@ router.post('/cart', async (req, res) => {
       cart = new CartLog({ sessionToken });
     }
 
-    cart.items = items || [];
+    const mongoose = require('mongoose');
+    const validItems = (items || []).filter(item => item.product && mongoose.Types.ObjectId.isValid(item.product));
+    cart.items = validItems;
     cart.isAbandoned = true; // reset to true upon updates
-    if (userId) {
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       cart.user = userId;
+    } else {
+      cart.user = undefined;
     }
     await cart.save();
 
     res.status(200).json(cart);
   } catch (error) {
+    console.error('Error in /analytics/cart:', error);
     res.status(500).json({ message: error.message });
   }
 });
