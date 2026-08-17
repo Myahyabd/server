@@ -250,6 +250,26 @@ const productSchema = mongoose.Schema(
         type: String,
       },
     ],
+
+    isDigital: {
+      type: Boolean,
+      default: false,
+    },
+    digitalType: {
+      type: String,
+      enum: ['PDF', 'Text'],
+      default: 'PDF',
+    },
+    pdfUrl: {
+      type: String,
+      default: '',
+    },
+    chapters: [
+      {
+        title: { type: String, required: true },
+        content: { type: String, required: true },
+      },
+    ],
   },
   {
     timestamps: true,

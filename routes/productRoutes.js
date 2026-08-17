@@ -656,6 +656,11 @@ router.put(
       product.isBundle = req.body.isBundle ?? product.isBundle;
       product.bundleItems = req.body.bundleItems ?? product.bundleItems;
 
+      product.isDigital = req.body.isDigital ?? product.isDigital;
+      product.digitalType = req.body.digitalType ?? product.digitalType;
+      product.pdfUrl = req.body.pdfUrl ?? product.pdfUrl;
+      product.chapters = req.body.chapters ?? product.chapters;
+
       const updatedProduct = await product.save();
 
       res.json(updatedProduct);
@@ -748,6 +753,56 @@ router.get('/robots/txt', async (req, res) => {
 
   res.header('Content-Type', 'text/plain');
   res.send(robots);
+// ===================================
+// GET EBOOK DETAILS & VERIFY ACCESS
+// ===================================
+router.get('/:id/read', protect, async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    if (!product.isDigital) {
+      return res.status(400).json({ message: 'This product is not a digital product' });
+    }
+
+    // Admins and Moderators always have access
+    const isStaff = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
+    if (!isStaff) {
+      const Order = require('../models/Order');
+      const hasAccess = await Order.exists({
+        user: req.user.id,
+        paymentStatus: 'Paid',
+        status: { $ne: 'Cancelled' },
+        'orderItems.product': product._id
+      });
+
+      let hasPhoneAccess = false;
+      if (!hasAccess && req.user.phone) {
+        hasPhoneAccess = await Order.exists({
+          'shippingAddress.phone': req.user.phone,
+          paymentStatus: 'Paid',
+          status: { $ne: 'Cancelled' },
+          'orderItems.product': product._id
+        });
+      }
+
+      if (!hasAccess && !hasPhoneAccess) {
+        return res.status(403).json({ message: 'You do not have access to read this eBook. Please purchase it first.' });
+      }
+    }
+
+    res.json({
+      _id: product._id,
+      name: product.name,
+      images: product.images,
+      digitalType: product.digitalType,
+      pdfUrl: product.pdfUrl,
+      chapters: product.chapters || []
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 module.exports = router;

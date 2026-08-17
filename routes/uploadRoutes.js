@@ -64,4 +64,44 @@ router.post(
   },
 );
 
+const multer = require('multer');
+const storageMemory = multer.memoryStorage();
+const uploadMemory = multer({ storage: storageMemory });
+
+// PDF UPLOAD
+router.post(
+  '/pdf',
+  uploadMemory.single('pdf'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+
+      const uploadStream = () => {
+        return new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'nus-haat-ebooks',
+              resource_type: 'auto',
+              allowed_formats: ['pdf']
+            },
+            (error, result) => {
+              if (error) return reject(error);
+              resolve(result);
+            }
+          );
+          stream.end(req.file.buffer);
+        });
+      };
+
+      const result = await uploadStream();
+      res.json({ url: result.secure_url });
+    } catch (error) {
+      console.error('PDF Upload failed:', error);
+      res.status(500).json({ message: error.message || 'PDF upload failed' });
+    }
+  }
+);
+
 module.exports = router;
