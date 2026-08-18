@@ -153,6 +153,10 @@ const systemSettingsSchema = new mongoose.Schema(
         default: 100,
       },
     },
+    facebookPixelId: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

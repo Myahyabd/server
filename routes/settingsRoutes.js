@@ -64,6 +64,7 @@ router.put('/', protect, adminOnly, async (req, res) => {
       settings.referralSettings = req.body.referralSettings || settings.referralSettings;
       settings.paymentMethods = req.body.paymentMethods || settings.paymentMethods;
       settings.affiliateSettings = req.body.affiliateSettings || settings.affiliateSettings;
+      settings.facebookPixelId = req.body.facebookPixelId !== undefined ? req.body.facebookPixelId : settings.facebookPixelId;
       settings.markModified('affiliateSettings');
     }
     await settings.save();
