@@ -117,25 +117,42 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
     let totalStockValue = 0;
     let totalStockLandedCost = 0;
 
+    let totalDigitalStockQty = 0;
+    let totalDigitalStockValue = 0;
+    let totalDigitalStockLandedCost = 0;
+
     if (isAdmin) {
       const productsList = await Product.find({}) || [];
       productsList.forEach(p => {
+        const isDig = p.isDigital === true;
         if (p.hasVariants && p.variants && p.variants.length > 0) {
           p.variants.forEach(v => {
             const qty = Number(v.stock || 0);
             const valPrice = Number(v.salePrice || v.price || p.salePrice || p.price || 0);
             const landedCostPrice = Number(v.landedCost || v.buyingPrice || p.landedCost || p.buyingPrice || 0);
-            totalStockQty += qty;
-            totalStockValue += (qty * valPrice);
-            totalStockLandedCost += (qty * landedCostPrice);
+            if (isDig) {
+              totalDigitalStockQty += qty;
+              totalDigitalStockValue += (qty * valPrice);
+              totalDigitalStockLandedCost += (qty * landedCostPrice);
+            } else {
+              totalStockQty += qty;
+              totalStockValue += (qty * valPrice);
+              totalStockLandedCost += (qty * landedCostPrice);
+            }
           });
         } else {
           const qty = Number(p.stock || 0);
           const valPrice = Number(p.salePrice || p.price || 0);
           const landedCostPrice = Number(p.landedCost || p.buyingPrice || 0);
-          totalStockQty += qty;
-          totalStockValue += (qty * valPrice);
-          totalStockLandedCost += (qty * landedCostPrice);
+          if (isDig) {
+            totalDigitalStockQty += qty;
+            totalDigitalStockValue += (qty * valPrice);
+            totalDigitalStockLandedCost += (qty * landedCostPrice);
+          } else {
+            totalStockQty += qty;
+            totalStockValue += (qty * valPrice);
+            totalStockLandedCost += (qty * landedCostPrice);
+          }
         }
       });
     }
@@ -282,6 +299,9 @@ router.get('/analytics', protect, adminOrModerator, async (req, res) => {
       totalStockQty,
       totalStockValue,
       totalStockLandedCost,
+      totalDigitalStockQty,
+      totalDigitalStockValue,
+      totalDigitalStockLandedCost,
       totalUsers,
       lowStockProducts,
       outOfStockProducts,
